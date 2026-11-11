@@ -8,6 +8,8 @@ Data/
 *.db
 *.db-wal
 *.db-shm
+.env
+deploy/.env
 README.md
 Dockerfile
 .dockerignore

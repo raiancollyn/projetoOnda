@@ -6,11 +6,11 @@
     },
     "exported_at": "2026-11-10T18:20:00-04:00",
     "name": "Onda Blazor",
-    "author": "onda",
+    "author": "onda@example.com",
     "description": "App Blazor de salas de voz, tela e chat usando LiveKit SFU e TURN externos. O runtime .NET 10 compila o projeto no primeiro boot; configure LiveKit/TURN e publique atrás de HTTPS.",
     "features": null,
     "docker_images": {
-        "Dotnet 10 (Pterodactyl yolk)": "ghcr.io/ptero-eggs/yolks:dotnet_10"
+        "Dotnet 10 Pterodactyl yolk": "ghcr.io/ptero-eggs/yolks:dotnet_10"
     },
     "file_denylist": [],
     "startup": "/bin/bash /home/container/start.sh",
@@ -22,7 +22,7 @@
     },
     "scripts": {
         "installation": {
-            "script": "#!/bin/bash\nset -euo pipefail\n\n# Pterodactyl install container mounts the server volume at /mnt/server.\napt-get update -y\napt-get install -y --no-install-recommends git ca-certificates curl\n\nmkdir -p /mnt/server\ncd /mnt/server\n\nif [ \"${USER_UPLOAD:-0}\" = \"1\" ] || [ \"${USER_UPLOAD:-0}\" = \"true\" ]; then\n    echo \"Upload skipped: USER_UPLOAD=1. O start.sh deve estar em /home/container/start.sh.\"\n    exit 0\nfi\n\nif [ -z \"${GIT_ADDRESS:-}\" ]; then\n    echo \"GIT_ADDRESS is required. Set the repository URL in the egg variables.\"\n    exit 1\nfi\n\nrm -rf source app\nif ! echo \"${GIT_ADDRESS}\" | grep -q '\\.git$'; then\n    GIT_ADDRESS=\"${GIT_ADDRESS}.git\"\nfi\n\nif [ -n \"${BRANCH:-}\" ]; then\n    git clone --depth 1 --single-branch --branch \"${BRANCH}\" \"${GIT_ADDRESS}\" source\nelse\n    git clone --depth 1 \"${GIT_ADDRESS}\" source\nfi\n\n# The app is compiled on startup by the .NET 10 runtime image. This keeps the\n# install independent from a .NET SDK being present in the installer image.\ninstall -m 0755 \"source/${PROJECT_DIR:-Onda}/deploy/pterodactyl/start.sh\" /mnt/server/start.sh\n\necho \"-----------------------------------------\"\necho \"Onda clonada em /mnt/server/source\"\necho \"O start.sh compila e inicia o app no primeiro boot.\"\necho \"Configure as variáveis de LiveKit/TURN e inicie o servidor.\"\necho \"-----------------------------------------\"\n",
+            "script": "#!/bin/bash\nset -euo pipefail\n\n# Pterodactyl install container mounts the server volume at /mnt/server.\napt-get update -y\napt-get install -y --no-install-recommends git ca-certificates curl\n\nmkdir -p /mnt/server\ncd /mnt/server\n\nif [ \"${USER_UPLOAD:-0}\" = \"1\" ] || [ \"${USER_UPLOAD:-0}\" = \"true\" ]; then\n    echo \"Upload skipped: USER_UPLOAD=1. O start.sh deve estar em /home/container/start.sh.\"\n    exit 0\nfi\n\nif [ -z \"${GIT_ADDRESS:-}\" ]; then\n    echo \"GIT_ADDRESS is required. Set the repository URL in the egg variables.\"\n    exit 1\nfi\n\nrm -rf source app\nif ! echo \"${GIT_ADDRESS}\" | grep -q '\\.git$'; then\n    GIT_ADDRESS=\"${GIT_ADDRESS}.git\"\nfi\n\nif [ -n \"${BRANCH:-}\" ]; then\n    git clone --depth 1 --single-branch --branch \"${BRANCH}\" \"${GIT_ADDRESS}\" source\nelse\n    git clone --depth 1 \"${GIT_ADDRESS}\" source\nfi\n\n# The app is compiled on startup by the .NET 10 runtime image. This keeps the\n# install independent from a .NET SDK being present in the installer image.\ninstall -m 0755 \"source/${PROJECT_DIR:-.}/deploy/pterodactyl/start.sh\" /mnt/server/start.sh\n\necho \"-----------------------------------------\"\necho \"Onda clonada em /mnt/server/source\"\necho \"O start.sh compila e inicia o app no primeiro boot.\"\necho \"Configure as variáveis de LiveKit/TURN e inicie o servidor.\"\necho \"-----------------------------------------\"\n",
             "container": "ghcr.io/ptero-eggs/installers:debian",
             "entrypoint": "bash"
         }
@@ -35,8 +35,7 @@
             "default_value": "https://github.com/SEU-USUARIO/onda.git",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "required|string",
-            "field_type": "text"
+            "rules": "required|string"
         },
         {
             "name": "Git branch",
@@ -45,18 +44,16 @@
             "default_value": "main",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "nullable|string",
-            "field_type": "text"
+            "rules": "nullable|string"
         },
         {
             "name": "Project directory",
-            "description": "Diretório, dentro do repositório, que contém Onda.csproj.",
+            "description": "Diretório, dentro do repositório, que contém Onda.csproj. Use \".\" quando o repositório é a própria pasta do projeto; use \"Onda\" se o .csproj estiver em uma subpasta.",
             "env_variable": "PROJECT_DIR",
-            "default_value": "Onda",
+            "default_value": ".",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "required|string",
-            "field_type": "text"
+            "rules": "required|string"
         },
         {
             "name": "Use uploaded files",
@@ -65,8 +62,7 @@
             "default_value": "0",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "required|boolean",
-            "field_type": "text"
+            "rules": "required|in:0,1,true,false"
         },
         {
             "name": "Public app URL",
@@ -75,8 +71,7 @@
             "default_value": "https://onda.example.com",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "nullable|string",
-            "field_type": "text"
+            "rules": "nullable|string"
         },
         {
             "name": "SQLite database path",
@@ -85,8 +80,7 @@
             "default_value": "/home/container/data/onda.db",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "required|string",
-            "field_type": "text"
+            "rules": "required|string"
         },
         {
             "name": "Max participants per room",
@@ -95,8 +89,7 @@
             "default_value": "25",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "required|integer|between:2,100",
-            "field_type": "text"
+            "rules": "required|integer|between:2,100"
         },
         {
             "name": "LiveKit URL",
@@ -105,8 +98,7 @@
             "default_value": "wss://livekit.example.com",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "required|string",
-            "field_type": "text"
+            "rules": "required|string"
         },
         {
             "name": "LiveKit API key",
@@ -115,8 +107,7 @@
             "default_value": "troque-pela-api-key",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "required|string",
-            "field_type": "text"
+            "rules": "required|string"
         },
         {
             "name": "LiveKit API secret",
@@ -125,8 +116,7 @@
             "default_value": "troque-pelo-api-secret",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "required|string",
-            "field_type": "text"
+            "rules": "required|string"
         },
         {
             "name": "LiveKit token TTL (hours)",
@@ -135,8 +125,7 @@
             "default_value": "6",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "required|integer|between:1,24",
-            "field_type": "text"
+            "rules": "required|integer|between:1,24"
         },
         {
             "name": "TURN URL",
@@ -145,8 +134,7 @@
             "default_value": "turn:turn.example.com:3478?transport=udp",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "nullable|string",
-            "field_type": "text"
+            "rules": "nullable|string"
         },
         {
             "name": "TURN username",
@@ -155,8 +143,7 @@
             "default_value": "onda",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "nullable|string",
-            "field_type": "text"
+            "rules": "nullable|string"
         },
         {
             "name": "TURN password",
@@ -165,8 +152,7 @@
             "default_value": "troque-por-uma-senha-longa",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "nullable|string",
-            "field_type": "text"
+            "rules": "nullable|string"
         }
     ]
 }

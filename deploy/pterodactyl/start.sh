@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Pterodactyl sets SERVER_PORT to the primary allocation.
 PORT="${SERVER_PORT:-8080}"
-SOURCE_ROOT="/home/container/source/${PROJECT_DIR:-Onda}"
+SOURCE_ROOT="/home/container/source/${PROJECT_DIR:-.}"
 APP_ROOT="/home/container/app"
 
 if [ ! -f "${SOURCE_ROOT}/Onda.csproj" ]; then

@@ -6,14 +6,14 @@
     },
     "exported_at": "2026-11-10T19:40:00-04:00",
     "name": "LiveKit SFU",
-    "author": "onda",
+    "author": "onda@example.com",
     "description": "LiveKit 1.13.11 standalone para o Onda. Use como servidor de mídia externo do egg do app. Requer alocações separadas para signaling, RTC/TCP e RTC/UDP; TLS é feito por um proxy reverso.",
     "features": null,
     "docker_images": {
-        "Debian (Pterodactyl yolk)": "ghcr.io/ptero-eggs/yolks:debian"
+        "Debian Pterodactyl yolk": "ghcr.io/ptero-eggs/yolks:debian"
     },
     "file_denylist": [],
-    "startup": "/home/container/livekit-server --bind 0.0.0.0 --port {{SERVER_PORT}} --rtc.tcp_port {{RTC_TCP_PORT}} --rtc.port_range_start {{RTC_UDP_PORT}} --rtc.port_range_end {{RTC_UDP_PORT}}",
+    "startup": "/home/container/livekit-server --bind 0.0.0.0 --port {{SERVER_PORT}} --rtc.tcp_port {{RTC_TCP_PORT}} --udp-port {{RTC_UDP_PORT}}",
     "config": {
         "files": "{}",
         "startup": "{\n  \"done\": [\n    \"starting LiveKit server\"\n  ]\n}",
@@ -22,7 +22,7 @@
     },
     "scripts": {
         "installation": {
-            "script": "#!/bin/bash\nset -euo pipefail\n\n# Pterodactyl installation container; server volume is mounted at /mnt/server.\napt-get update -y\napt-get install -y --no-install-recommends ca-certificates curl tar\n\nVERSION=\"1.13.11\"\ncase \"$(uname -m)\" in\n    x86_64|amd64)  ARCH=\"amd64\" ;;\n    aarch64|arm64) ARCH=\"arm64\" ;;\n    armv7l|armv7)  ARCH=\"armv7\" ;;\n    *)\n        echo \"Arquitetura não suportada: $(uname -m)\" >&2\n        exit 1\n        ;;\nesac\n\nmkdir -p /mnt/server\ncd /mnt/server\n\nTMP=\"$(mktemp -d)\"\ntrap 'rm -rf \"$TMP\"' EXIT\n\nURL=\"https://github.com/livekit/livekit/releases/download/v${VERSION}/livekit_${VERSION}_linux_${ARCH}.tar.gz\"\necho \"Baixando ${URL}\"\ncurl -fsSL \"$URL\" -o \"$TMP/livekit.tar.gz\"\ntar -xzf \"$TMP/livekit.tar.gz\" -C /mnt/server livekit-server\nchmod +x /mnt/server/livekit-server\n\necho \"-----------------------------------------\"\necho \"LiveKit ${VERSION} instalado em /mnt/server/livekit-server\"\necho \"Crie as alocações de signaling, RTC/TCP e RTC/UDP antes de iniciar.\"\necho \"-----------------------------------------\"\n",
+            "script": "#!/bin/bash\nset -euo pipefail\n\n# Pterodactyl installation container; server volume is mounted at /mnt/server.\nmkdir -p /mnt/server\ncd /mnt/server\n\n# Permite instalar mesmo em nodes sem DNS quando o binário foi enviado por\n# SFTP. Sem isso, um reinstall tentaria baixar de novo e falharia.\nif [ -x /mnt/server/livekit-server ]; then\n    echo \"livekit-server já existe em /mnt/server; pulando download.\"\n    exit 0\nfi\n\napt-get update -y\napt-get install -y --no-install-recommends ca-certificates curl tar\n\nVERSION=\"1.13.11\"\ncase \"$(uname -m)\" in\n    x86_64|amd64)  ARCH=\"amd64\" ;;\n    aarch64|arm64) ARCH=\"arm64\" ;;\n    armv7l|armv7)  ARCH=\"armv7\" ;;\n    *)\n        echo \"Arquitetura não suportada: $(uname -m)\" >&2\n        exit 1\n        ;;\nesac\n\nTMP=\"$(mktemp -d)\"\ntrap 'rm -rf \"$TMP\"' EXIT\n\nURL=\"https://github.com/livekit/livekit/releases/download/v${VERSION}/livekit_${VERSION}_linux_${ARCH}.tar.gz\"\necho \"Baixando ${URL}\"\nif ! curl --retry 3 --connect-timeout 10 --max-time 180 -fsSL \"$URL\" -o \"$TMP/livekit.tar.gz\"; then\n    echo \"-----------------------------------------\" >&2\n    echo \"Falha ao baixar o LiveKit (DNS/rede do node).\" >&2\n    echo \"Baixe em uma máquina com internet:\" >&2\n    echo \"  ${URL}\" >&2\n    echo \"Extraia 'livekit-server' e envie para /home/container/livekit-server via SFTP.\" >&2\n    echo \"Depois aplique permissão 755: chmod 755 /home/container/livekit-server\" >&2\n    echo \"-----------------------------------------\" >&2\n    exit 1\nfi\n\ntar -xzf \"$TMP/livekit.tar.gz\" -C /mnt/server livekit-server\nchmod +x /mnt/server/livekit-server\n\necho \"-----------------------------------------\"\necho \"LiveKit ${VERSION} instalado em /mnt/server/livekit-server\"\necho \"Crie as alocações de signaling, RTC/TCP e RTC/UDP antes de iniciar.\"\necho \"-----------------------------------------\"\n",
             "container": "ghcr.io/ptero-eggs/installers:debian",
             "entrypoint": "bash"
         }
@@ -35,8 +35,7 @@
             "default_value": "devkey: 0123456789abcdef0123456789abcdef",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "required|string",
-            "field_type": "text"
+            "rules": "required|string"
         },
         {
             "name": "RTC TCP port",
@@ -45,8 +44,7 @@
             "default_value": "7881",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "required|integer|between:1,65535",
-            "field_type": "text"
+            "rules": "required|integer|between:1,65535"
         },
         {
             "name": "RTC UDP port",
@@ -55,18 +53,16 @@
             "default_value": "7882",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "required|integer|between:1,65535",
-            "field_type": "text"
+            "rules": "required|integer|between:1,65535"
         },
         {
             "name": "Use external IP",
-            "description": "true faz o LiveKit anunciar o IP público descoberto via STUN. Use false apenas em rede local.",
+            "description": "Use true ou false (1/0 também é aceito). true faz o LiveKit anunciar o IP público descoberto via STUN; false é para rede local.",
             "env_variable": "LIVEKIT_RTC_USE_EXTERNAL_IP",
             "default_value": "true",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "required|boolean",
-            "field_type": "text"
+            "rules": "required|in:true,false,1,0"
         },
         {
             "name": "Log level",
@@ -75,8 +71,7 @@
             "default_value": "info",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "required|string",
-            "field_type": "text"
+            "rules": "required|string"
         }
     ]
 }

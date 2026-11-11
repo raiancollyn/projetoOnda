@@ -31,7 +31,7 @@ fi
 
 # The app is compiled on startup by the .NET 10 runtime image. This keeps the
 # install independent from a .NET SDK being present in the installer image.
-install -m 0755 "source/${PROJECT_DIR:-Onda}/deploy/pterodactyl/start.sh" /mnt/server/start.sh
+install -m 0755 "source/${PROJECT_DIR:-.}/deploy/pterodactyl/start.sh" /mnt/server/start.sh
 
 echo "-----------------------------------------"
 echo "Onda clonada em /mnt/server/source"

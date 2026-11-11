@@ -29,10 +29,10 @@ O caminho mais completo continua sendo a VPS com Docker Compose: ela entrega app
 
 1. Publique este repositório em um Git acessível pelo nó.
 2. Importe `egg-onda.json`.
-3. Crie o servidor usando a imagem **Dotnet 10 (Pterodactyl yolk)**.
+3. Crie o servidor usando a imagem **Dotnet 10 Pterodactyl yolk**.
 4. Preencha:
    - `GIT_ADDRESS` e `BRANCH`;
-   - `PROJECT_DIR` (padrão `Onda`);
+   - `PROJECT_DIR` — use `.` quando o repositório for a própria pasta do projeto (como em `raiancollyn/projetoOnda`); use `Onda` se o `.csproj` estiver em uma subpasta;
    - `APP_PUBLIC_URL` — URL HTTPS do app, usada nos links de convite;
    - `DATABASE_PATH` — padrão `/home/container/data/onda.db`;
    - `MAX_PARTICIPANTS`;
@@ -83,6 +83,50 @@ livekit.seudominio.com {
 ```
 
 Abra a porta primária apenas para o proxy, e as portas `RTC_TCP_PORT`/`RTC_UDP_PORT` diretamente para os navegadores.
+
+## ARM64 (Oracle Ampere)
+
+Não é necessário um egg separado para ARM64:
+
+- o runtime do app (`yolks:dotnet_10`) e o instalador têm imagens `linux/arm64`;
+- o egg do LiveKit detecta `aarch64|arm64` e baixa o binário `linux_arm64` correto;
+- o SQLite do app publica `libe_sqlite3` para `linux-arm64`;
+- as imagens Docker do Compose (`livekit`, `coturn`, `caddy`, .NET) também são multi-arquitetura.
+
+O log `livekit_1.13.11_linux_arm64.tar.gz` mostra que a detecção funcionou. Se o download falhar, o problema é DNS/rede de saída do node, não a arquitetura.
+
+> O egg do app compila no primeiro boot e precisa de acesso ao NuGet. Corrigir apenas o LiveKit por upload manual não resolve um DNS quebrado para o app; o node precisa de rede de saída ou de uma imagem do app já publicada.
+
+## Panic `invalid argument to Intn` ao iniciar o LiveKit
+
+Era causado por passar o **mesmo valor** para `--rtc.port_range_start` e `--rtc.port_range_end` com `use_external_ip=true`. O LiveKit tenta sortear uma porta dentro de um range de tamanho zero e entra em panic.
+
+O egg agora usa `--udp-port` com uma única porta:
+
+```bash
+/home/container/livekit-server \
+  --bind 0.0.0.0 \
+  --port ${SERVER_PORT} \
+  --rtc.tcp_port ${RTC_TCP_PORT} \
+  --udp-port ${RTC_UDP_PORT}
+```
+
+Se o servidor já foi criado com o startup antigo, edite o **Startup Command** do servidor no Pterodactyl e troque os dois parâmetros de range por `--udp-port ${RTC_UDP_PORT}`. Não é necessário recriar o servidor.
+
+## Se o import retornar 500
+
+O importador do Pterodactyl valida o campo `author` do egg como **e-mail**. Um valor como `onda` faz a validação falhar no `save()` do model e o painel pode responder com 500 em vez de mostrar o erro. Os eggs deste repositório usam `onda@example.com`.
+
+Também removemos o campo virtual `field_type` das variáveis, que não é uma coluna do banco e pode quebrar painéis mais antigos.
+
+Ao salvar um egg já importado, o formulário valida `label|imagem` e **não aceita parênteses no label**. Os rótulos agora são `Dotnet 10 Pterodactyl yolk` e `Debian Pterodactyl yolk`. Se você já importou a versão anterior, remova os parênteses no campo de imagens e salve novamente.
+
+Se ainda falhar:
+
+1. confirme que está enviando o `.json` novo, não uma cópia antiga;
+2. veja `storage/logs/laravel.log` no painel (procure `DataValidationException`, `SQLSTATE` ou `JsonException`);
+3. confira `upload_max_filesize`/`post_max_size` do PHP (os eggs têm poucos KB, mas o limite pode estar baixo);
+4. teste primeiro o `egg-livekit.json`, que tem menos variáveis, para isolar o problema.
 
 ## Limitações
 

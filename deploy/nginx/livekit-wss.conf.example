@@ -1,0 +1,48 @@
+# LiveKit WSS na frente do Pterodactyl/Wings.
+# Copie para /etc/nginx/sites-available/livekit e ajuste:
+#   - livekit.seudominio.com
+#   - certificado (ou use certbot --nginx)
+#   - 127.0.0.1:25567 para o endereço/porta primária real do servidor LiveKit
+#
+# O map precisa ficar no contexto http (os sites-enabled do Debian já são
+# incluídos dentro de http).
+
+map $http_upgrade $livekit_connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name livekit.seudominio.com;
+
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name livekit.seudominio.com;
+
+    ssl_certificate     /etc/letsencrypt/live/livekit.seudominio.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/livekit.seudominio.com/privkey.pem;
+
+    # A sinalização do LiveKit é WebSocket. A mídia NÃO passa por aqui:
+    # RTC/TCP e RTC/UDP vão direto para as portas alocadas no Pterodactyl.
+    location / {
+        proxy_pass http://127.0.0.1:25567;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $livekit_connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
+    }
+}
