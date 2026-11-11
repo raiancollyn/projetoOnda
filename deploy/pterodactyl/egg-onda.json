@@ -32,7 +32,7 @@
             "name": "Git repository",
             "description": "Repositório onde este projeto foi publicado. O egg espera a pasta do projeto Onda dentro dele.",
             "env_variable": "GIT_ADDRESS",
-            "default_value": "https://github.com/SEU-USUARIO/onda.git",
+            "default_value": "https://github.com/raiancollyn/projetoOnda.git",
             "user_viewable": true,
             "user_editable": true,
             "rules": "required|string"
