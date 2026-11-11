@@ -1,0 +1,46 @@
+# Onda (Blazor Server) na frente do Pterodactyl/Wings.
+# Copie para /etc/nginx/sites-available/onda e ajuste:
+#   - onda.dpbr.net
+#   - certificado (ou use certbot)
+#   - PORTA_DO_APP: porta primária (SERVER_PORT) do servidor do app no Pterodactyl
+#
+# O app usa WebSocket em /_blazor; o upgrade precisa ser encaminhado.
+
+map $http_upgrade $onda_connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name onda.dpbr.net;
+
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name onda.dpbr.net;
+
+    ssl_certificate     /etc/letsencrypt/live/onda.dpbr.net/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/onda.dpbr.net/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:PORTA_DO_APP;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $onda_connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Circuitos Blazor Server podem ficar abertos por muito tempo.
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
+    }
+}

@@ -1,4 +1,41 @@
-# Nginx na frente do LiveKit (WSS)
+# Nginx na frente do Onda e do LiveKit
+
+## Onda (onda.dpbr.net)
+
+Use [`onda.conf.example`](onda.conf.example) para o site Blazor.
+
+Antes de ativar:
+
+1. Descubra a porta primária (`SERVER_PORT`) do servidor do app no Pterodactyl. No painel, é a alocação principal do servidor; no log do app aparece em `Now listening on: http://0.0.0.0:PORTA`.
+2. Confirme o bind no host:
+
+   ```bash
+   ss -ltnp | grep PORTA_DO_APP
+   ```
+
+   - `0.0.0.0:PORTA` ou `127.0.0.1:PORTA` → use `127.0.0.1:PORTA` no Nginx.
+   - IP público/privado do node → use esse IP.
+   - Nginx em outro container → use o IP do host/node, não `127.0.0.1`.
+
+3. Aponte `onda.dpbr.net` para a VM e libere 443/TCP (e 80/TCP para o Certbot/redirect).
+4. Emita ou use um certificado que cubra `onda.dpbr.net` antes de ativar o bloco 443.
+
+```bash
+sudo cp onda.conf.example /etc/nginx/sites-available/onda
+sudo ln -s /etc/nginx/sites-available/onda /etc/nginx/sites-enabled/onda
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+No app, configure:
+
+```text
+APP_PUBLIC_URL=https://onda.dpbr.net
+```
+
+O WebSocket do Blazor (`/_blazor`) é encaminhado pelo mesmo `location /`; os headers `Upgrade`/`Connection` e os timeouts longos são obrigatórios.
+
+## LiveKit (livekit.dpbr.net)
 
 Use o exemplo [`livekit-wss.conf.example`](livekit-wss.conf.example) em um novo server block do Nginx para o subdomínio do LiveKit.
 
