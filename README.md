@@ -42,6 +42,7 @@ dotnet run --launch-profile sfu
 - **Microfone**: ativação com permissão, mute/retomada e detecção local de fala.
 - **Indicador de fala** sincronizado nos avatares e na lista de pessoas.
 - **Webcam e tela**: um compartilhamento de vídeo por pessoa, com destaque no palco e clique para ampliar/voltar à grade.
+- **Tela cheia**: a sala inteira ou uma tela/webcam individual pode ocupar o monitor; os overlays de mídia somem após 3 s sem movimento do mouse ou quando ele sai de cima da imagem, e voltam ao passar o mouse ou tocar.
 - **Áudio da tela**: quando o navegador fornece a faixa, é publicada separadamente.
 - **Volume individual**: sliders por participante para voz e áudio de tela, com mute.
 - **Qualidade do compartilhamento de tela**:
@@ -179,5 +180,6 @@ O cliente **LiveKit JavaScript 2.15.6** é distribuído em `wwwroot/js/vendor/` 
 - **SQLite**: mensagem enviada antes da entrada do segundo participante apareceu no histórico do segundo; badge de não lidas; reload do único participante manteve sala e histórico; exclusão imediata no Sair explícito; exclusão após a janela de 30 s quando a aba foi fechada; link encerrado caiu no fallback; banco limpo no restart.
 - Preferências de qualidade: 720p/60 fps/4 Mbps com VP9 preferido no mesh, atualização para 1080p/30 fps/5 Mbps durante o compartilhamento, e 720p/60 fps no SFU com camada de vídeo remota em resolução máxima.
 - Layout mobile sem overflow horizontal em 320px e 390px; barra de ações do diálogo de qualidade fixa e acessível no celular.
+- **Tela cheia e overlays**: fullscreen da sala e de uma mídia individual no Chromium; overlays visíveis ao entrar, ocultos após 3 s parado ou ao sair com o mouse, e reexibidos ao mover o mouse; layout mobile 390px sem overflow.
 - Build e `dotnet publish` em Release; inicialização por `--contentRoot` validada para o fluxo do Pterodactyl.
 - `docker-compose*.yml` validado como YAML, `egg-onda.json` e `egg-livekit.json` validados como JSON; imagens `dotnet/sdk:10.0.403`, `dotnet/aspnet:10.0.14`, `livekit/livekit-server:v1.13.11` e os yolks `dotnet_10`/`debian` verificadas.

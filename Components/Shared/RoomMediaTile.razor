@@ -1,69 +1,86 @@
+@using Microsoft.JSInterop
 @using Onda.Models
+@inject IJSRuntime JS
 
-<button type="button"
-        class="media-tile @(Participant.ScreenOn ? "is-screen" : "is-camera") @(IsSelf ? "is-self" : null) @(IsFeatured ? "is-featured" : null) @(IsThumbnail ? "is-thumbnail" : null) @(CanFocus ? "can-focus" : null)"
-        aria-label="@BuildAriaLabel()"
-        aria-pressed="@(IsFeatured ? "true" : "false")"
-        @onclick="() => OnFocus.InvokeAsync(Participant.Id)">
-    <span class="media-placeholder" aria-hidden="true">
-        <Avatar Name="@Participant.Name" Tone="@Participant.ColorIndex" Size="@(IsThumbnail ? 34 : 68)" Speaking="@Participant.Speaking" />
-        @if (!IsThumbnail)
-        {
-            <span>@(Participant.ScreenOn ? "Preparando a tela..." : "Abrindo a câmera...")</span>
-        }
-    </span>
-
-    <video data-peer-id="@Participant.Id"
-           data-media-kind="@(Participant.ScreenOn ? "screen" : "camera")"
-           autoplay
-           playsinline
-           muted></video>
-
-    <span class="media-topline">
-        <span class="media-kind">
-            <Icon Name="@(Participant.ScreenOn ? "screen" : "camera")" Size="@(IsThumbnail ? 11 : 13)" />
-            <span>@(Participant.ScreenOn ? "Tela" : "Câmera")</span>
-        </span>
-        @if (!IsThumbnail && CanFocus)
-        {
-            <span class="media-focus-hint">
-                <Icon Name="@(IsFeatured ? "grid" : "external")" Size="13" />
-                @(IsFeatured ? "Ver grade" : "Ampliar")
-            </span>
-        }
-    </span>
-
-    <span class="media-caption">
-        <Avatar Name="@Participant.Name" Tone="@Participant.ColorIndex" Size="@(IsThumbnail ? 22 : 32)" />
-        <span class="media-person">
-            <strong>@Participant.Name</strong>
+<div class="media-tile-shell"
+     data-media-shell
+     data-media-tile-id="@Participant.Id">
+    <button type="button"
+            class="media-tile @(Participant.ScreenOn ? "is-screen" : "is-camera") @(IsSelf ? "is-self" : null) @(IsFeatured ? "is-featured" : null) @(IsThumbnail ? "is-thumbnail" : null) @(CanFocus ? "can-focus" : null) @(!IsThumbnail ? "has-fullscreen" : null)"
+            aria-label="@BuildAriaLabel()"
+            aria-pressed="@(IsFeatured ? "true" : "false")"
+            @onclick="() => OnFocus.InvokeAsync(Participant.Id)">
+        <span class="media-placeholder" aria-hidden="true">
+            <Avatar Name="@Participant.Name" Tone="@Participant.ColorIndex" Size="@(IsThumbnail ? 34 : 68)" Speaking="@Participant.Speaking" />
             @if (!IsThumbnail)
             {
-                <span>
-                    @(Participant.ScreenOn
-                        ? (Participant.ScreenWithAudio ? "compartilhando a tela · com áudio" : "compartilhando a tela")
-                        : "câmera ligada")
+                <span>@(Participant.ScreenOn ? "Preparando a tela..." : "Abrindo a câmera...")</span>
+            }
+        </span>
+
+        <video data-peer-id="@Participant.Id"
+               data-media-kind="@(Participant.ScreenOn ? "screen" : "camera")"
+               autoplay
+               playsinline
+               muted></video>
+
+        <span class="media-topline">
+            <span class="media-kind">
+                <Icon Name="@(Participant.ScreenOn ? "screen" : "camera")" Size="@(IsThumbnail ? 11 : 13)" />
+                <span>@(Participant.ScreenOn ? "Tela" : "Câmera")</span>
+            </span>
+            @if (!IsThumbnail && CanFocus)
+            {
+                <span class="media-focus-hint">
+                    <Icon Name="@(IsFeatured ? "grid" : "external")" Size="13" />
+                    @(IsFeatured ? "Ver grade" : "Ampliar")
                 </span>
             }
         </span>
-        @if (!IsThumbnail)
-        {
-            <span class="media-flags">
-                @if (IsSelf)
+
+        <span class="media-caption">
+            <Avatar Name="@Participant.Name" Tone="@Participant.ColorIndex" Size="@(IsThumbnail ? 22 : 32)" />
+            <span class="media-person">
+                <strong>@Participant.Name</strong>
+                @if (!IsThumbnail)
                 {
-                    <span class="media-you">Você</span>
-                }
-                <span class="media-flag" title="@(Participant.MicOn ? "Microfone ligado" : "Microfone silenciado")">
-                    <Icon Name="@(Participant.MicOn ? "mic" : "mic-off")" Size="14" />
-                </span>
-                @if (Participant.Speaking)
-                {
-                    <span class="media-speaking-bars" aria-hidden="true"><i></i><i></i><i></i></span>
+                    <span>
+                        @(Participant.ScreenOn
+                            ? (Participant.ScreenWithAudio ? "compartilhando a tela · com áudio" : "compartilhando a tela")
+                            : "câmera ligada")
+                    </span>
                 }
             </span>
-        }
-    </span>
-</button>
+            @if (!IsThumbnail)
+            {
+                <span class="media-flags">
+                    @if (IsSelf)
+                    {
+                        <span class="media-you">Você</span>
+                    }
+                    <span class="media-flag" title="@(Participant.MicOn ? "Microfone ligado" : "Microfone silenciado")">
+                        <Icon Name="@(Participant.MicOn ? "mic" : "mic-off")" Size="14" />
+                    </span>
+                    @if (Participant.Speaking)
+                    {
+                        <span class="media-speaking-bars" aria-hidden="true"><i></i><i></i><i></i></span>
+                    }
+                </span>
+            }
+        </span>
+    </button>
+
+    @if (!IsThumbnail)
+    {
+        <button type="button"
+                class="media-fullscreen-button"
+                aria-label="@BuildFullscreenLabel()"
+                title="Tela cheia"
+                @onclick="ToggleFullscreenAsync">
+            <Icon Name="maximize" Size="16" />
+        </button>
+    }
+</div>
 
 @code {
     [Parameter, EditorRequired]
@@ -94,5 +111,23 @@
 
         var action = IsFeatured ? "Voltar para a grade" : "Ampliar";
         return $"{action} {content} de {Participant.Name}";
+    }
+
+    private string BuildFullscreenLabel()
+    {
+        var content = Participant.ScreenOn ? "tela" : "câmera";
+        return $"Ver {content} de {Participant.Name} em tela cheia";
+    }
+
+    private async Task ToggleFullscreenAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("onda.toggleFullscreen", $"[data-media-tile-id='{Participant.Id}']");
+        }
+        catch (JSException)
+        {
+            // O navegador pode bloquear a API de tela cheia; o botão continua inofensivo.
+        }
     }
 }

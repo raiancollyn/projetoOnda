@@ -575,6 +575,13 @@
     isolation: isolate;
 }
 
+.room-app:fullscreen,
+.room-app:-webkit-full-screen {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+}
+
 .room-app::before {
     content: "";
     position: absolute;
@@ -828,6 +835,14 @@
     align-items: center;
     gap: 0.7rem;
     min-width: 0;
+}
+
+.stage-toolbar-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.35rem;
+    flex: 0 0 auto;
 }
 
 .stage-label {
@@ -2521,6 +2536,14 @@
     .stage-grid-button {
         min-height: 1.75rem;
         font-size: 0.56rem;
+    }
+
+    .stage-fullscreen-button {
+        padding: 0.35rem 0.45rem;
+    }
+
+    .stage-fullscreen-button .stage-button-label {
+        display: none;
     }
 
     .stage-grid-button .onda-icon {

@@ -161,6 +161,236 @@
         }
     }
 
+    function resolveFullscreenTarget(target) {
+        if (target instanceof Element) {
+            return target;
+        }
+
+        if (typeof target === "string" && target.length > 0) {
+            try {
+                return document.querySelector(target);
+            } catch {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    function getFullscreenElement() {
+        return document.fullscreenElement || document.webkitFullscreenElement || null;
+    }
+
+    async function exitFullscreen() {
+        try {
+            if (document.exitFullscreen) {
+                await document.exitFullscreen();
+                return;
+            }
+
+            if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            }
+        } catch {
+            // Some browsers reject exit when the user gesture is no longer active.
+        }
+    }
+
+    async function toggleFullscreen(target) {
+        const element = resolveFullscreenTarget(target);
+        if (!(element instanceof HTMLElement)) {
+            return false;
+        }
+
+        try {
+            const current = getFullscreenElement();
+            if (current === element) {
+                await exitFullscreen();
+                return true;
+            }
+
+            if (current) {
+                await exitFullscreen();
+            }
+
+            if (typeof element.requestFullscreen === "function") {
+                await element.requestFullscreen();
+                return true;
+            }
+
+            if (typeof element.webkitRequestFullscreen === "function") {
+                element.webkitRequestFullscreen();
+                return true;
+            }
+        } catch {
+            return false;
+        }
+
+        return false;
+    }
+
+    const overlayHideDelay = 3000;
+    const overlayTimers = new WeakMap();
+
+    function getMediaShell(target) {
+        return target instanceof Element ? target.closest("[data-media-shell]") : null;
+    }
+
+    function clearOverlayTimer(shell) {
+        const timer = overlayTimers.get(shell);
+        if (timer) {
+            window.clearTimeout(timer);
+            overlayTimers.delete(shell);
+        }
+    }
+
+    function hideMediaOverlays(shell) {
+        if (!(shell instanceof HTMLElement)) {
+            return;
+        }
+
+        clearOverlayTimer(shell);
+        shell.classList.add("is-overlay-hidden");
+    }
+
+    function armOverlayTimer(shell) {
+        clearOverlayTimer(shell);
+
+        const timer = window.setTimeout(() => {
+            overlayTimers.delete(shell);
+            if (!shell.isConnected) {
+                return;
+            }
+
+            const fullscreenButton = shell.querySelector(".media-fullscreen-button");
+            if (fullscreenButton instanceof HTMLElement && fullscreenButton.matches(":hover")) {
+                armOverlayTimer(shell);
+                return;
+            }
+
+            const activeElement = document.activeElement;
+            if (
+                shell.contains(activeElement) &&
+                activeElement instanceof HTMLElement &&
+                activeElement.matches(":focus-visible")
+            ) {
+                armOverlayTimer(shell);
+                return;
+            }
+
+            shell.classList.add("is-overlay-hidden");
+        }, overlayHideDelay);
+
+        overlayTimers.set(shell, timer);
+    }
+
+    function showMediaOverlays(shell) {
+        if (!(shell instanceof HTMLElement)) {
+            return;
+        }
+
+        shell.classList.remove("is-overlay-hidden");
+        armOverlayTimer(shell);
+    }
+
+    function initMediaShells() {
+        document.querySelectorAll("[data-media-shell]").forEach((shell) => {
+            if (!(shell instanceof HTMLElement) || shell.dataset.overlayReady === "true") {
+                return;
+            }
+
+            shell.dataset.overlayReady = "true";
+            showMediaOverlays(shell);
+        });
+    }
+
+    let overlayScanScheduled = false;
+
+    function scheduleOverlayScan() {
+        if (overlayScanScheduled) {
+            return;
+        }
+
+        overlayScanScheduled = true;
+        window.requestAnimationFrame(() => {
+            overlayScanScheduled = false;
+            initMediaShells();
+        });
+    }
+
+    document.addEventListener("pointermove", (event) => {
+        const shell = getMediaShell(event.target);
+        if (shell) {
+            showMediaOverlays(shell);
+        }
+    }, { passive: true });
+
+    document.addEventListener("pointerdown", (event) => {
+        const shell = getMediaShell(event.target);
+        if (shell) {
+            showMediaOverlays(shell);
+        }
+    }, { passive: true });
+
+    document.addEventListener("pointerout", (event) => {
+        const from = getMediaShell(event.target);
+        if (!from || getMediaShell(event.relatedTarget) === from) {
+            return;
+        }
+
+        hideMediaOverlays(from);
+    });
+
+    document.addEventListener("focusin", (event) => {
+        const shell = getMediaShell(event.target);
+        if (shell) {
+            showMediaOverlays(shell);
+        }
+    });
+
+    document.addEventListener("focusout", (event) => {
+        const shell = getMediaShell(event.target);
+        if (!shell) {
+            return;
+        }
+
+        window.setTimeout(() => {
+            if (!shell.contains(document.activeElement)) {
+                hideMediaOverlays(shell);
+            }
+        }, 0);
+    });
+
+    function handleFullscreenChange() {
+        const fullscreenElement = getFullscreenElement();
+        if (!(fullscreenElement instanceof HTMLElement)) {
+            return;
+        }
+
+        const shell = fullscreenElement.matches("[data-media-shell]")
+            ? fullscreenElement
+            : fullscreenElement.querySelector("[data-media-shell]");
+
+        if (shell) {
+            showMediaOverlays(shell);
+        }
+    }
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+
+    const overlayObserver = new MutationObserver(scheduleOverlayScan);
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", () => {
+            initMediaShells();
+            overlayObserver.observe(document.documentElement, { childList: true, subtree: true });
+        }, { once: true });
+    } else {
+        initMediaShells();
+        overlayObserver.observe(document.documentElement, { childList: true, subtree: true });
+    }
+
     window.onda = Object.freeze({
         copyText,
         scrollToBottom,
@@ -168,6 +398,7 @@
         shareLink,
         reloadPage,
         readScreenQuality,
-        saveScreenQuality
+        saveScreenQuality,
+        toggleFullscreen
     });
 })();

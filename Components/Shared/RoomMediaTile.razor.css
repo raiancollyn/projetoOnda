@@ -1,3 +1,10 @@
+.media-tile-shell {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+}
+
 .media-tile {
     position: relative;
     display: block;
@@ -130,6 +137,10 @@
     border-color: transparent;
 }
 
+.media-tile.has-fullscreen .media-focus-hint {
+    margin-right: 2.2rem;
+}
+
 .media-caption {
     position: absolute;
     z-index: 3;
@@ -256,6 +267,95 @@
 
 .media-tile.is-thumbnail ::deep .avatar {
     display: none;
+}
+
+.media-fullscreen-button {
+    position: absolute;
+    z-index: 4;
+    top: 0.6rem;
+    right: 0.6rem;
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 50%;
+    background: rgba(6, 16, 13, 0.7);
+    color: rgba(247, 243, 235, 0.86);
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    opacity: 1;
+    visibility: visible;
+    transition:
+        opacity 220ms ease,
+        visibility 220ms ease,
+        background-color 180ms ease,
+        color 180ms ease,
+        transform 180ms ease;
+}
+
+.media-fullscreen-button:hover {
+    border-color: transparent;
+    background: var(--lime);
+    color: var(--ink);
+    transform: scale(1.04);
+}
+
+.media-fullscreen-button:focus-visible {
+    outline: 2px solid var(--lime);
+    outline-offset: 2px;
+}
+
+.media-topline,
+.media-caption {
+    transition: opacity 220ms ease, visibility 220ms ease;
+}
+
+.media-tile-shell.is-overlay-hidden .media-topline,
+.media-tile-shell.is-overlay-hidden .media-caption,
+.media-tile-shell.is-overlay-hidden .media-fullscreen-button {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.media-tile-shell.is-overlay-hidden .media-tile {
+    border-color: transparent;
+}
+
+.media-tile-shell:fullscreen,
+.media-tile-shell:-webkit-full-screen {
+    width: 100vw;
+    height: 100vh;
+    background: #000;
+}
+
+.media-tile-shell:fullscreen .media-tile,
+.media-tile-shell:-webkit-full-screen .media-tile {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: #000;
+}
+
+.media-tile-shell:fullscreen .media-tile video,
+.media-tile-shell:-webkit-full-screen .media-tile video {
+    object-fit: contain;
+}
+
+@media (max-width: 700px) {
+    .media-fullscreen-button {
+        top: 0.45rem;
+        right: 0.45rem;
+        width: 1.8rem;
+        height: 1.8rem;
+    }
+
+    .media-tile.has-fullscreen .media-focus-hint {
+        margin-right: 1.95rem;
+    }
 }
 
 @keyframes media-eq {

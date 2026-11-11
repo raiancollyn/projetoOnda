@@ -254,12 +254,22 @@ else
                                     }
                                 </span>
                             </div>
-                            @if (ShowSpotlight)
-                            {
-                                <button type="button" class="stage-grid-button" @onclick="ClearFocus">
-                                    <Icon Name="grid" Size="14" /> Ver grade
+                            <div class="stage-toolbar-actions">
+                                @if (ShowSpotlight)
+                                {
+                                    <button type="button" class="stage-grid-button" @onclick="ClearFocus">
+                                        <Icon Name="grid" Size="14" /> Ver grade
+                                    </button>
+                                }
+                                <button type="button"
+                                        class="stage-grid-button stage-fullscreen-button"
+                                        aria-label="Tela cheia da sala"
+                                        title="Tela cheia da sala"
+                                        @onclick="ToggleRoomFullscreenAsync">
+                                    <Icon Name="maximize" Size="14" />
+                                    <span class="stage-button-label">Tela cheia</span>
                                 </button>
-                            }
+                            </div>
                         </div>
 
                         @if (ShowSpotlight && FocusedShare is not null)
@@ -308,9 +318,19 @@ else
                                     <span class="stage-label"><span class="live-dot"></span> Conversa ao vivo</span>
                                     <span class="stage-subtitle">@QuietStageSubtitle</span>
                                 </div>
-                                <button type="button" class="stage-grid-button" @onclick="CopyRoomLinkAsync">
-                                    <Icon Name="user-plus" Size="14" /> Convidar
-                                </button>
+                                <div class="stage-toolbar-actions">
+                                    <button type="button" class="stage-grid-button" @onclick="CopyRoomLinkAsync">
+                                        <Icon Name="user-plus" Size="14" /> Convidar
+                                    </button>
+                                    <button type="button"
+                                            class="stage-grid-button stage-fullscreen-button"
+                                            aria-label="Tela cheia da sala"
+                                            title="Tela cheia da sala"
+                                            @onclick="ToggleRoomFullscreenAsync">
+                                        <Icon Name="maximize" Size="14" />
+                                        <span class="stage-button-label">Tela cheia</span>
+                                    </button>
+                                </div>
                             </div>
 
                             <div class="people-stage people-count-@Math.Min(_room.Participants.Count, 4)">
@@ -1676,6 +1696,22 @@ else
     }
 
     private void ClearFocus() => _focusedPeerId = null;
+
+    private async Task ToggleRoomFullscreenAsync()
+    {
+        try
+        {
+            var entered = await JS.InvokeAsync<bool>("onda.toggleFullscreen", ".room-app");
+            if (!entered)
+            {
+                Toasts.Show("Este navegador não permitiu entrar em tela cheia.", ToastKind.Error);
+            }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            Toasts.Show("Não foi possível alternar a tela cheia.", ToastKind.Error);
+        }
+    }
 
     private void OpenChat()
     {
