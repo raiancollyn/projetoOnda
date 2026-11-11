@@ -1,0 +1,51 @@
+@using Onda.Components.Shared
+
+<div class="theme-control" data-theme-control>
+    <button type="button"
+            class="theme-toggle"
+            data-theme-toggle
+            aria-haspopup="menu"
+            aria-expanded="false"
+            aria-label="Opções de tema"
+            title="Opções de tema">
+        <span class="theme-toggle-glyph theme-toggle-sun" aria-hidden="true">
+            <Icon Name="sun" Size="16" />
+        </span>
+        <span class="theme-toggle-glyph theme-toggle-moon" aria-hidden="true">
+            <Icon Name="moon" Size="16" />
+        </span>
+        <span class="theme-toggle-glyph theme-toggle-system" aria-hidden="true">
+            <Icon Name="monitor" Size="16" />
+        </span>
+    </button>
+
+    <div class="theme-menu" data-theme-menu role="menu" aria-label="Tema" hidden>
+        <button type="button"
+                class="theme-choice"
+                data-theme-choice="light"
+                role="menuitemradio"
+                aria-checked="false">
+            <span class="theme-choice-icon" aria-hidden="true"><Icon Name="sun" Size="15" /></span>
+            <span class="theme-choice-label">Claro</span>
+            <span class="theme-choice-check" aria-hidden="true"><Icon Name="check" Size="14" /></span>
+        </button>
+        <button type="button"
+                class="theme-choice"
+                data-theme-choice="dark"
+                role="menuitemradio"
+                aria-checked="false">
+            <span class="theme-choice-icon" aria-hidden="true"><Icon Name="moon" Size="15" /></span>
+            <span class="theme-choice-label">Escuro</span>
+            <span class="theme-choice-check" aria-hidden="true"><Icon Name="check" Size="14" /></span>
+        </button>
+        <button type="button"
+                class="theme-choice"
+                data-theme-choice="system"
+                role="menuitemradio"
+                aria-checked="false">
+            <span class="theme-choice-icon" aria-hidden="true"><Icon Name="monitor" Size="15" /></span>
+            <span class="theme-choice-label">Sistema</span>
+            <span class="theme-choice-check" aria-hidden="true"><Icon Name="check" Size="14" /></span>
+        </button>
+    </div>
+</div>

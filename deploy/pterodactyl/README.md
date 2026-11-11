@@ -33,6 +33,7 @@ O caminho mais completo continua sendo a VPS com Docker Compose: ela entrega app
 4. Preencha:
    - `GIT_ADDRESS` e `BRANCH`;
    - `PROJECT_DIR` — use `.` quando o repositório for a própria pasta do projeto (como em `raiancollyn/projetoOnda`); use `Onda` se o `.csproj` estiver em uma subpasta;
+   - `AUTO_UPDATE` — `1` para buscar o último commit do `BRANCH` a cada inicialização (padrão `0`);
    - `APP_PUBLIC_URL` — URL HTTPS do app, usada nos links de convite;
    - `DATABASE_PATH` — padrão `/home/container/data/onda.db`;
    - `MAX_PARTICIPANTS`;
@@ -41,6 +42,19 @@ O caminho mais completo continua sendo a VPS com Docker Compose: ela entrega app
 5. Configure um proxy reverso HTTPS para a porta alocada. O app escuta HTTP; câmera, microfone e tela exigem HTTPS fora de `localhost`.
 
 O install clona o repositório para `/home/container/source`. No boot, `start.sh` publica o projeto em `/home/container/app` e executa o app. O primeiro boot precisa de internet para restaurar o NuGet; os seguintes usam o cache.
+
+### Atualizações automáticas
+
+Com `AUTO_UPDATE=1`, o `start.sh` faz `git fetch` do `BRANCH` antes de compilar:
+
+- se o commit remoto for diferente do local, aplica `git reset --hard` e recompila;
+- se falhar a consulta ao Git, inicia com o código atual;
+- a compilação é feita em um diretório temporário; se falhar, a versão anterior em `/home/container/app` continua sendo usada;
+- a checagem acontece **na inicialização**, não durante uma chamada. Para verificar periodicamente, crie um **Schedule** no Pterodactyl com a ação **Restart** no horário desejado (por exemplo, de madrugada).
+
+O pull descarta alterações locais em `/home/container/source` e executa o código do branch. Proteja o branch (2FA, revisão e branch protection) porque um commit novo passa a rodar no servidor após o próximo restart.
+
+> Em servidores já criados, a variável `AUTO_UPDATE` pode não aparecer só por atualizar o egg. Se ela não estiver disponível no painel, recrie o servidor com o egg atualizado ou adicione a variável pelo fluxo do painel. O install precisa ser refeito para copiar o novo `start.sh`.
 
 ### Banco SQLite
 
@@ -133,6 +147,7 @@ Se ainda falhar:
 - O TURN não está embutido no egg do LiveKit. Use um Coturn externo ou a stack Docker completa.
 - Um único port UDP no Pterodactyl é suficiente para uso pequeno/médio, mas não tem a flexibilidade de um range dedicado.
 - O proxy TLS da sinalização não é criado pelo egg; você precisa configurá-lo.
-- O primeiro boot do app compila o projeto; pode demorar alguns segundos.
+- O app compila o projeto a cada boot; pode demorar alguns segundos. Com `AUTO_UPDATE=1` há também a consulta ao Git antes da compilação.
+- `AUTO_UPDATE` verifica apenas na inicialização; atualizações em tempo real exigiriam reiniciar o processo e derrubar os circuitos Blazor ativos.
 - O banco SQLite é um arquivo local. Não compartilhe o mesmo arquivo entre dois servidores do app.
 - Este repositório não foi importado em uma instalação Pterodactyl real neste ambiente; os eggs foram validados como JSON e os scripts seguem o formato/entrypoint dos yolks oficiais.

@@ -42,8 +42,9 @@ dotnet run --launch-profile sfu
 - **Microfone**: ativação com permissão, mute/retomada e detecção local de fala.
 - **Indicador de fala** sincronizado nos avatares e na lista de pessoas.
 - **Webcam e tela**: um compartilhamento de vídeo por pessoa, com destaque no palco e clique para ampliar/voltar à grade.
+- **Controles durante a transmissão**: com a tela compartilhada, dá para **trocar a tela** e **silenciar/reativar o áudio da tela** sem encerrar a chamada; o botão **Parar** continua sendo o encerramento explícito.
 - **Tela cheia**: a sala inteira ou uma tela/webcam individual pode ocupar o monitor; os overlays de mídia somem após 3 s sem movimento do mouse ou quando ele sai de cima da imagem, e voltam ao passar o mouse ou tocar.
-- **Áudio da tela**: quando o navegador fornece a faixa, é publicada separadamente.
+- **Áudio da tela**: quando o navegador fornece a faixa, é publicada separadamente. O Firefox não captura áudio de tela; o app avisa no modal de qualidade e ao iniciar o compartilhamento.
 - **Volume individual**: sliders por participante para voz e áudio de tela, com mute.
 - **Qualidade do compartilhamento de tela**:
   - presets **Fluida**, **Equilibrada**, **Nítida** e **Personalizada**;
@@ -56,6 +57,7 @@ dotnet run --launch-profile sfu
 - **Ciclo de vida da sala**: ao clicar em **Sair**, a última pessoa apaga a sala, a senha e todo o histórico. Se a aba for fechada ou recarregada, há uma janela curta de 30 s para reentrar; depois o janitor apaga tudo.
 - **Presença confiável**: heartbeat no servidor e saída imediata via beacon ao fechar a aba.
 - **Interface responsiva**: landing page, gate de senha, sala em duas colunas e painel deslizante no celular.
+- **Tema claro e escuro**: na primeira visita o site segue `prefers-color-scheme`; o controle de tema no cabeçalho da home, da sala e do gate oferece **Claro**, **Escuro** e **Sistema**. A escolha manual fica em `localStorage`; escolher **Sistema** remove a preferência e volta a acompanhar o tema do sistema. O tema é aplicado antes do CSS carregar (sem flash) e vale para todas as páginas e componentes. Mudanças do sistema são seguidas ao vivo enquanto a preferência for **Sistema**.
 - **Deploy**:
   - [`Dockerfile`](Dockerfile) e [`deploy/docker-compose.yml`](deploy/docker-compose.yml) com app + LiveKit + Coturn;
   - overlay de TLS com Caddy;
@@ -76,10 +78,12 @@ Abra o botão **Qualidade** no cabeçalho da sala. As preferências ficam no nav
 
 Também é possível escolher codec e prioridade de conteúdo. Observações:
 
-- No modo **SFU**, codec/resolução/FPS/bitrate são aplicados ao **próximo compartilhamento** de tela (a publicação LiveKit é configurada no momento em que você compartilha).
+- No modo **SFU**, ao salvar com uma tela ativa, resolução/FPS/bitrate/prioridade são aplicados na hora no capture e no sender, sem republicar a faixa e sem interromper quem está assistindo. O codec é definido na publicação e passa a valer no próximo compartilhamento.
 - No SFU, quem assiste pede a camada de maior resolução para compartilhamentos de tela, priorizando texto legível; isso pode aumentar o consumo de banda.
 - No modo **mesh**, a resolução, o FPS e o bitrate também podem ser reaplicados a um compartilhamento ativo; a preferência de codec é negociada em novas conexões (entrar novamente na sala).
 - A disponibilidade de codecs depende do navegador e do servidor; se o preferido não for compatível, pode haver fallback.
+- **Trocar tela** captura a nova fonte antes de substituir a antiga; se o usuário cancelar o seletor, a transmissão atual continua. O áudio da tela mantém o estado de mudo ao trocar.
+- **Firefox** não implementa áudio em `getDisplayMedia`; nesse navegador o vídeo é compartilhado sem som e o app mostra um aviso. Use Chrome/Edge quando o conteúdo tiver áudio.
 - 60 fps + 1440p + bitrate alto consomem mais CPU, banda e bateria. Se a qualidade cair, prefira Fluida ou Equilibrada.
 - Em telas com muito texto, 30 fps e prioridade “Texto e nitidez” costumam dar um resultado mais legível do que 60 fps com bitrate baixo.
 
@@ -152,7 +156,7 @@ O Compose expõe somente as portas necessárias e separa as faixas UDP do SFU (`
 
 Há dois eggs em [`deploy/pterodactyl/`](deploy/pterodactyl/):
 
-- **app** — usa o runtime .NET 10 do Pterodactyl e compila o projeto no primeiro boot;
+- **app** — usa o runtime .NET 10 do Pterodactyl e compila o projeto a cada boot; com `AUTO_UPDATE=1`, busca o último commit do branch antes de compilar;
 - **LiveKit SFU** — baixa o binário oficial e expõe sinalização + RTC/TCP + RTC/UDP em alocações separadas.
 
 O app aponta para o LiveKit externo pelas variáveis `LIVEKIT_URL`, `LIVEKIT_API_KEY` e `LIVEKIT_API_SECRET`. O TURN continua separado; a stack Docker principal inclui Coturn. O README do egg explica as alocações, o proxy `wss://` e o banco SQLite.
@@ -181,5 +185,10 @@ O cliente **LiveKit JavaScript 2.15.6** é distribuído em `wwwroot/js/vendor/` 
 - Preferências de qualidade: 720p/60 fps/4 Mbps com VP9 preferido no mesh, atualização para 1080p/30 fps/5 Mbps durante o compartilhamento, e 720p/60 fps no SFU com camada de vídeo remota em resolução máxima.
 - Layout mobile sem overflow horizontal em 320px e 390px; barra de ações do diálogo de qualidade fixa e acessível no celular.
 - **Tela cheia e overlays**: fullscreen da sala e de uma mídia individual no Chromium; overlays visíveis ao entrar, ocultos após 3 s parado ou ao sair com o mouse, e reexibidos ao mover o mouse; layout mobile 390px sem overflow.
+- **Qualidade ao vivo e controles de tela**: no modo SFU, salvar qualidade durante a transmissão manteve a mesma faixa de captura, o mesmo track remoto e a publicação ativa; áudio da tela foi silenciado/reativado; troca de tela gerou nova captura mantendo a transmissão e o estado de mudo. Os mesmos fluxos foram validados no modo mesh, incluindo o botão dedicado de parar.
+- **Firefox**: detectado por user-agent; aviso no modal de qualidade e toast ao iniciar compartilhamento sem faixa de áudio; botão de áudio da tela fica desabilitado. Testado com user-agent do Firefox em Chromium.
+- **Temas**: preferência do sistema aplicada no primeiro acesso (claro/escuro), menu **Claro/Escuro/Sistema**, persistência em `localStorage` após reload e navegação, retorno ao modo Sistema removendo a preferência, mudança ao vivo quando o sistema muda e a preferência é Sistema, e layout sem overflow em 320 px e 390 px. Home clara/escura, sala clara/escura, gate claro, fallback, páginas de erro e modais de criação/qualidade verificados visualmente.
+- **Home atualizada**: narrativa de tela/chat, controles ao vivo, qualidade durante a transmissão, privacidade sem gravação e cópia revisada; cards flutuantes do preview ocultos no mobile.
+- **Auto-update do egg**: `AUTO_UPDATE=1` faz `git fetch` e recompila no boot; pull com `reset --hard`, build atômico e fallback para a versão anterior se a compilação falhar. Validado com ShellCheck e JSON; agendamento periódico fica a cargo de um restart no Pterodactyl.
 - Build e `dotnet publish` em Release; inicialização por `--contentRoot` validada para o fluxo do Pterodactyl.
 - `docker-compose*.yml` validado como YAML, `egg-onda.json` e `egg-livekit.json` validados como JSON; imagens `dotnet/sdk:10.0.403`, `dotnet/aspnet:10.0.14`, `livekit/livekit-server:v1.13.11` e os yolks `dotnet_10`/`debian` verificadas.

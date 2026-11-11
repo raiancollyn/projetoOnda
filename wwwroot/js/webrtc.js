@@ -827,6 +827,102 @@ function handleScreenEnded() {
     }
 }
 
+export async function switchScreenSource() {
+    if (!initialized || local.screenBusy || !local.screenOn) {
+        return false;
+    }
+
+    local.screenBusy = true;
+    try {
+        let displayStream;
+        try {
+            displayStream = await navigator.mediaDevices.getDisplayMedia({
+                video: {
+                    frameRate: {
+                        ideal: screenQuality.frameRate,
+                        max: screenQuality.frameRate
+                    },
+                    width: { ideal: screenQuality.width },
+                    height: { ideal: screenQuality.height }
+                },
+                audio: true
+            });
+        } catch (error) {
+            if (error?.name !== "NotAllowedError" && error?.name !== "AbortError") {
+                notifyError("screen", screenErrorMessage(error));
+            }
+            return false;
+        }
+
+        const videoTrack = displayStream.getVideoTracks()[0] || null;
+        if (!videoTrack) {
+            displayStream.getTracks().forEach(stopTrack);
+            notifyError("screen", "Nenhuma tela foi compartilhada.");
+            return false;
+        }
+
+        const audioTrack = displayStream.getAudioTracks()[0] || null;
+        const oldVideoTrack = local.screenVideoTrack;
+        const oldAudioTrack = local.screenAudioTrack;
+        const oldStream = local.screenStream;
+        const audioWasEnabled = oldAudioTrack?.enabled ?? true;
+
+        if (oldVideoTrack) {
+            oldVideoTrack.removeEventListener("ended", handleScreenEnded);
+        }
+        if (oldAudioTrack) {
+            oldAudioTrack.removeEventListener("ended", handleScreenAudioEnded);
+        }
+
+        videoTrack.contentHint = screenQuality.contentMode === "motion" ? "motion" : "detail";
+        if (audioTrack) {
+            audioTrack.contentHint = "music";
+            audioTrack.enabled = audioWasEnabled;
+        }
+
+        local.screenStream = displayStream;
+        local.screenVideoTrack = videoTrack;
+        local.screenAudioTrack = audioTrack;
+        local.screenWithAudio = Boolean(audioTrack);
+        local.presentationStream = new MediaStream([videoTrack]);
+        local.presentationKind = "screen";
+
+        videoTrack.addEventListener("ended", handleScreenEnded, { once: true });
+        if (audioTrack) {
+            audioTrack.addEventListener("ended", handleScreenAudioEnded, { once: true });
+        }
+
+        replaceAllVideoTracks(videoTrack);
+        replaceAllScreenAudioTracks(audioTrack || local.placeholderScreenAudioTrack);
+        await applyScreenQualityToPeers();
+
+        if (oldVideoTrack) {
+            stopTrack(oldVideoTrack);
+        }
+        if (oldAudioTrack) {
+            stopTrack(oldAudioTrack);
+        }
+        if (oldStream) {
+            oldStream.getTracks().forEach(stopTrack);
+        }
+
+        notifyMediaState();
+        syncMediaElements();
+        return true;
+    } finally {
+        local.screenBusy = false;
+    }
+}
+
+export function setScreenAudioEnabled(enabled) {
+    if (!initialized || !local.screenOn || !local.screenAudioTrack) {
+        return false;
+    }
+
+    local.screenAudioTrack.enabled = Boolean(enabled);
+    return true;
+}
+
 function handleScreenAudioEnded() {
     if (!initialized || !local.screenOn) {
         return;
@@ -1037,7 +1133,7 @@ export async function setScreenQuality(nextQuality) {
     screenQuality = normalizeScreenQuality(nextQuality);
 
     if (!initialized || !local.screenOn || !local.screenVideoTrack) {
-        return;
+        return false;
     }
 
     try {
@@ -1055,6 +1151,7 @@ export async function setScreenQuality(nextQuality) {
 
     local.screenVideoTrack.contentHint = screenQuality.contentMode === "motion" ? "motion" : "detail";
     await applyScreenQualityToPeers();
+    return true;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1668,6 +1765,8 @@ export function getDiagnostics() {
             cameraOn: local.cameraOn,
             screenOn: local.screenOn,
             screenWithAudio: local.screenWithAudio,
+            screenAudioEnabled: local.screenAudioTrack?.enabled ?? null,
+            screenTrackId: local.screenVideoTrack?.id || null,
             hasPresentation: Boolean(local.presentationStream),
             screenSettings: local.screenVideoTrack?.getSettings?.() || null
         },

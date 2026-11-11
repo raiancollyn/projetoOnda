@@ -808,6 +808,93 @@ async function stopCameraSession(notifyServer) {
 /* Screen share                                                       */
 /* ------------------------------------------------------------------ */
 
+function buildScreenCaptureOptions() {
+    return {
+        audio: true,
+        resolution: {
+            width: quality.width,
+            height: quality.height,
+            frameRate: quality.frameRate
+        },
+        contentHint: quality.contentMode === "motion" ? "motion" : "detail",
+        selfBrowserSurface: "exclude",
+        surfaceSwitching: "include",
+        systemAudio: "include"
+    };
+}
+
+function buildScreenPublishOptions() {
+    const options = {
+        source: Track.Source.ScreenShare,
+        name: "screen",
+        simulcast: true,
+        screenShareEncoding: {
+            maxBitrate: quality.bitrateKbps * 1000,
+            maxFramerate: quality.frameRate,
+            priority: "high"
+        },
+        degradationPreference: quality.contentMode === "motion"
+            ? "maintain-framerate"
+            : "maintain-resolution"
+    };
+
+    if (quality.codec !== "auto") {
+        options.videoCodec = quality.codec;
+    }
+
+    return options;
+}
+
+async function publishScreenTracks(videoTrack, audioTrack, audioEnabled = true) {
+    try {
+        await room.localParticipant.publishTrack(videoTrack, buildScreenPublishOptions());
+    } catch (error) {
+        console.warn("Onda: screen video publish failed", error);
+        stopLocalTrack(videoTrack);
+        stopLocalTrack(audioTrack);
+        notifyError("screen", "Não foi possível publicar a tela no servidor de mídia.");
+        return false;
+    }
+
+    let audioPublished = false;
+    if (audioTrack) {
+        if (audioTrack.mediaStreamTrack) {
+            audioTrack.mediaStreamTrack.enabled = audioEnabled;
+            audioTrack.mediaStreamTrack.contentHint = "music";
+        }
+
+        try {
+            await room.localParticipant.publishTrack(audioTrack, {
+                source: Track.Source.ScreenShareAudio,
+                name: "screen-audio"
+            });
+            audioPublished = true;
+        } catch (error) {
+            console.warn("Onda: screen audio publish failed", error);
+            stopLocalTrack(audioTrack);
+            audioTrack = null;
+        }
+    }
+
+    local.screenVideoTrack = videoTrack;
+    local.screenAudioTrack = audioPublished ? audioTrack : null;
+    local.screenOn = true;
+    local.screenWithAudio = audioPublished;
+    local.presentationTrack = videoTrack;
+    local.presentationKind = "screen";
+
+    videoTrack.mediaStreamTrack.addEventListener("ended", handleScreenEnded, { once: true });
+    if (audioPublished && audioTrack?.mediaStreamTrack) {
+        audioTrack.mediaStreamTrack.addEventListener(
+            "ended",
+            handleScreenAudioEnded,
+            { once: true }
+        );
+    }
+
+    return true;
+}
+
 export async function toggleScreenShare() {
     if (!initialized || !room || screenBusy) {
         return;
@@ -831,24 +918,11 @@ export async function toggleScreenShare() {
     }
 
     screenBusy = true;
-    let videoTrack = null;
-    let audioTrack = null;
 
     try {
         let tracks;
         try {
-            tracks = await createLocalScreenTracks({
-                audio: true,
-                resolution: {
-                    width: quality.width,
-                    height: quality.height,
-                    frameRate: quality.frameRate
-                },
-                contentHint: quality.contentMode === "motion" ? "motion" : "detail",
-                selfBrowserSurface: "exclude",
-                surfaceSwitching: "include",
-                systemAudio: "include"
-            });
+            tracks = await createLocalScreenTracks(buildScreenCaptureOptions());
         } catch (error) {
             if (error?.name !== "NotAllowedError" && error?.name !== "AbortError") {
                 notifyError("screen", screenErrorMessage(error));
@@ -861,8 +935,8 @@ export async function toggleScreenShare() {
             return;
         }
 
-        videoTrack = tracks.find((track) => track.kind === "video") || null;
-        audioTrack = tracks.find((track) => track.kind === "audio") || null;
+        const videoTrack = tracks.find((track) => track.kind === "video") || null;
+        const audioTrack = tracks.find((track) => track.kind === "audio") || null;
 
         if (!videoTrack) {
             tracks.forEach((track) => stopLocalTrack(track));
@@ -878,63 +952,11 @@ export async function toggleScreenShare() {
         }
         await stopScreenSession(false);
 
-        const publishOptions = {
-            source: Track.Source.ScreenShare,
-            name: "screen",
-            simulcast: true,
-            screenShareEncoding: {
-                maxBitrate: quality.bitrateKbps * 1000,
-                maxFramerate: quality.frameRate,
-                priority: "high"
-            },
-            degradationPreference: quality.contentMode === "motion"
-                ? "maintain-framerate"
-                : "maintain-resolution"
-        };
-        if (quality.codec !== "auto") {
-            publishOptions.videoCodec = quality.codec;
-        }
-
-        try {
-            await room.localParticipant.publishTrack(videoTrack, publishOptions);
-        } catch (error) {
-            console.warn("Onda: screen video publish failed", error);
-            stopLocalTrack(videoTrack);
-            stopLocalTrack(audioTrack);
-            notifyError("screen", "Não foi possível publicar a tela no servidor de mídia.");
+        const published = await publishScreenTracks(videoTrack, audioTrack);
+        if (!published) {
             notifyMediaState();
+            syncMediaElements();
             return;
-        }
-
-        let audioPublished = false;
-        if (audioTrack) {
-            try {
-                await room.localParticipant.publishTrack(audioTrack, {
-                    source: Track.Source.ScreenShareAudio,
-                    name: "screen-audio"
-                });
-                audioPublished = true;
-            } catch (error) {
-                console.warn("Onda: screen audio publish failed", error);
-                stopLocalTrack(audioTrack);
-                audioTrack = null;
-            }
-        }
-
-        local.screenVideoTrack = videoTrack;
-        local.screenAudioTrack = audioPublished ? audioTrack : null;
-        local.screenOn = true;
-        local.screenWithAudio = audioPublished;
-        local.presentationTrack = videoTrack;
-        local.presentationKind = "screen";
-
-        videoTrack.mediaStreamTrack.addEventListener("ended", handleScreenEnded, { once: true });
-        if (local.screenAudioTrack?.mediaStreamTrack) {
-            local.screenAudioTrack.mediaStreamTrack.addEventListener(
-                "ended",
-                handleScreenAudioEnded,
-                { once: true }
-            );
         }
 
         notifyMediaState();
@@ -942,6 +964,63 @@ export async function toggleScreenShare() {
     } finally {
         screenBusy = false;
     }
+}
+
+export async function switchScreenSource() {
+    if (!initialized || !room || screenBusy || !local.screenOn) {
+        return false;
+    }
+
+    screenBusy = true;
+    try {
+        let tracks;
+        try {
+            tracks = await createLocalScreenTracks(buildScreenCaptureOptions());
+        } catch (error) {
+            if (error?.name !== "NotAllowedError" && error?.name !== "AbortError") {
+                notifyError("screen", screenErrorMessage(error));
+            }
+            return false;
+        }
+
+        const videoTrack = tracks.find((track) => track.kind === "video") || null;
+        const audioTrack = tracks.find((track) => track.kind === "audio") || null;
+
+        if (!videoTrack) {
+            tracks.forEach((track) => stopLocalTrack(track));
+            notifyError("screen", "Nenhuma tela foi compartilhada.");
+            return false;
+        }
+
+        videoTrack.mediaStreamTrack.contentHint =
+            quality.contentMode === "motion" ? "motion" : "detail";
+
+        const audioWasEnabled = local.screenAudioTrack?.mediaStreamTrack?.enabled ?? true;
+
+        // A captura nova já foi obtida; só agora a transmissão antiga é trocada.
+        await stopScreenSession(false);
+        const published = await publishScreenTracks(videoTrack, audioTrack, audioWasEnabled);
+        if (!published) {
+            notifyMediaState();
+            syncMediaElements();
+            return false;
+        }
+
+        notifyMediaState();
+        syncMediaElements();
+        return true;
+    } finally {
+        screenBusy = false;
+    }
+}
+
+export function setScreenAudioEnabled(enabled) {
+    if (!initialized || !local.screenOn || !local.screenAudioTrack?.mediaStreamTrack) {
+        return false;
+    }
+
+    local.screenAudioTrack.mediaStreamTrack.enabled = Boolean(enabled);
+    return true;
 }
 
 function handleScreenEnded() {
@@ -1221,10 +1300,72 @@ export function syncMediaElements() {
 /* Quality                                                            */
 /* ------------------------------------------------------------------ */
 
-export function setScreenQuality(nextQuality) {
+export async function setScreenQuality(nextQuality) {
     quality = normalizeScreenQuality(nextQuality);
-    // Encoding options are fixed when a LiveKit track is published. The room
-    // UI tells the user that changes apply to the next share.
+
+    if (!initialized || !room || !local.screenOn || !local.screenVideoTrack) {
+        return false;
+    }
+
+    const mediaTrack = local.screenVideoTrack.mediaStreamTrack;
+    try {
+        await mediaTrack.applyConstraints({
+            frameRate: {
+                ideal: quality.frameRate,
+                max: quality.frameRate
+            },
+            width: { ideal: quality.width },
+            height: { ideal: quality.height }
+        });
+    } catch (error) {
+        console.warn("Onda: screen capture constraints could not be updated live", error);
+    }
+
+    mediaTrack.contentHint = quality.contentMode === "motion" ? "motion" : "detail";
+
+    // Encoding é atualizado no sender atual; não republicamos a faixa, então
+    // os participantes remotos continuam inscritos sem interrupção.
+    const sender = local.screenVideoTrack.sender;
+    if (sender) {
+        try {
+            const parameters = sender.getParameters();
+            const encodings = parameters.encodings || [];
+            const targetBitrate = Math.round(quality.bitrateKbps * 1000);
+            const currentPeak = Math.max(0, ...encodings.map((encoding) => encoding.maxBitrate || 0));
+
+            if (encodings.length === 0) {
+                parameters.encodings = [{
+                    maxBitrate: targetBitrate,
+                    maxFramerate: quality.frameRate
+                }];
+            } else {
+                for (const encoding of encodings) {
+                    if (currentPeak > 0 && encoding.maxBitrate) {
+                        encoding.maxBitrate = Math.max(
+                            150000,
+                            Math.round(encoding.maxBitrate * (targetBitrate / currentPeak)));
+                    } else {
+                        encoding.maxBitrate = targetBitrate;
+                    }
+                    encoding.maxFramerate = quality.frameRate;
+                }
+            }
+
+            if ("degradationPreference" in parameters) {
+                parameters.degradationPreference = quality.contentMode === "motion"
+                    ? "maintain-framerate"
+                    : "maintain-resolution";
+            }
+
+            await sender.setParameters(parameters);
+        } catch (error) {
+            console.warn("Onda: live screen encoding update failed", error);
+        }
+    }
+
+    notifyMediaState();
+    syncMediaElements();
+    return true;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1234,6 +1375,19 @@ export function setScreenQuality(nextQuality) {
 export function getDiagnostics() {
     const screenPublication = room?.localParticipant?.getTrackPublication(Track.Source.ScreenShare);
     const screenVideoSettings = local.screenVideoTrack?.mediaStreamTrack?.getSettings?.() || null;
+    let screenEncodings = null;
+    try {
+        screenEncodings = local.screenVideoTrack?.sender
+            ?.getParameters?.()
+            ?.encodings?.map((encoding) => ({
+                maxBitrate: encoding.maxBitrate || null,
+                maxFramerate: encoding.maxFramerate || null,
+                scaleResolutionDownBy: encoding.scaleResolutionDownBy || null,
+                active: encoding.active
+            })) || null;
+    } catch {
+        screenEncodings = null;
+    }
 
     return {
         initialized,
@@ -1248,6 +1402,8 @@ export function getDiagnostics() {
             cameraOn: local.cameraOn,
             screenOn: local.screenOn,
             screenWithAudio: local.screenWithAudio,
+            screenAudioEnabled: local.screenAudioTrack?.mediaStreamTrack?.enabled ?? null,
+            screenTrackId: local.screenVideoTrack?.mediaStreamTrack?.id || null,
             hasPresentation: Boolean(local.presentationTrack)
         },
         localScreen: screenVideoSettings
@@ -1258,6 +1414,9 @@ export function getDiagnostics() {
                 codec: screenPublication?.codec || null
             }
             : null,
+        screenPublication: Boolean(screenPublication),
+        screenAudioPublication: Boolean(room?.localParticipant?.getTrackPublication(Track.Source.ScreenShareAudio)),
+        screenEncodings,
         remoteParticipants: room ? Array.from(room.remoteParticipants.keys()) : [],
         remoteVideos: Array.from(remoteVideos.keys()),
         remoteAudioSinks: Array.from(remoteAudios.entries()).map(([key, item]) => ({

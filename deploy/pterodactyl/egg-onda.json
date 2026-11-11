@@ -7,7 +7,7 @@
     "exported_at": "2026-11-10T18:20:00-04:00",
     "name": "Onda Blazor",
     "author": "onda@example.com",
-    "description": "App Blazor de salas de voz, tela e chat usando LiveKit SFU e TURN externos. O runtime .NET 10 compila o projeto no primeiro boot; configure LiveKit/TURN e publique atrás de HTTPS.",
+    "description": "App Blazor de salas de voz, tela e chat usando LiveKit SFU e TURN externos. O runtime .NET 10 compila o projeto a cada boot; AUTO_UPDATE pode buscar o último commit antes de compilar. Configure LiveKit/TURN e publique atrás de HTTPS.",
     "features": null,
     "docker_images": {
         "Dotnet 10 Pterodactyl yolk": "ghcr.io/ptero-eggs/yolks:dotnet_10"
@@ -30,9 +30,9 @@
     "variables": [
         {
             "name": "Git repository",
-            "description": "Repositório onde este projeto foi publicado. O egg espera a pasta do projeto Onda dentro dele.",
+            "description": "Repositório onde este projeto foi publicado. O diretório do projeto é definido em PROJECT_DIR.",
             "env_variable": "GIT_ADDRESS",
-            "default_value": "https://github.com/raiancollyn/projetoOnda.git",
+            "default_value": "https://github.com/SEU-USUARIO/onda.git",
             "user_viewable": true,
             "user_editable": true,
             "rules": "required|string"
@@ -59,6 +59,15 @@
             "name": "Use uploaded files",
             "description": "1 para ignorar o Git e usar arquivos já enviados ao servidor.",
             "env_variable": "USER_UPLOAD",
+            "default_value": "0",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|in:0,1,true,false"
+        },
+        {
+            "name": "Auto update",
+            "description": "1 para buscar e aplicar o último commit do BRANCH a cada inicialização. Para verificar periodicamente, agende um restart no Pterodactyl.",
+            "env_variable": "AUTO_UPDATE",
             "default_value": "0",
             "user_viewable": true,
             "user_editable": true,

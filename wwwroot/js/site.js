@@ -3,6 +3,247 @@
     "use strict";
 
     const bootSelector = "[data-app-ready]";
+    const themeStorageKey = "onda.theme";
+    const themePreferences = new Set(["light", "dark", "system"]);
+    const themeMedia = window.matchMedia
+        ? window.matchMedia("(prefers-color-scheme: dark)")
+        : null;
+
+    function readThemePreference() {
+        try {
+            const value = localStorage.getItem(themeStorageKey);
+            return value === "light" || value === "dark" ? value : "system";
+        } catch {
+            return "system";
+        }
+    }
+
+    function systemTheme() {
+        return themeMedia?.matches ? "dark" : "light";
+    }
+
+    function effectiveTheme(preference) {
+        return preference === "system" ? systemTheme() : preference;
+    }
+
+    function currentPreference() {
+        const value = document.documentElement.dataset.themePreference;
+        return themePreferences.has(value) ? value : readThemePreference();
+    }
+
+    function currentTheme() {
+        return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+    }
+
+    function updateThemeControls() {
+        const preference = currentPreference();
+        const effective = currentTheme();
+        const effectiveLabel = effective === "dark" ? "escuro" : "claro";
+
+        document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
+            if (!(button instanceof HTMLElement)) {
+                return;
+            }
+            const label = preference === "system"
+                ? `Tema do sistema (${effectiveLabel}). Opções de tema`
+                : `Tema ${effectiveLabel}. Opções de tema`;
+            button.setAttribute("aria-label", label);
+            button.setAttribute("title", label);
+        });
+
+        document.querySelectorAll("[data-theme-choice]").forEach((choice) => {
+            if (!(choice instanceof HTMLElement)) {
+                return;
+            }
+            choice.setAttribute("aria-checked", choice.dataset.themeChoice === preference ? "true" : "false");
+        });
+    }
+
+    function applyTheme(preference, persist) {
+        const nextPreference = themePreferences.has(preference) ? preference : "system";
+        const nextTheme = effectiveTheme(nextPreference);
+        document.documentElement.dataset.theme = nextTheme;
+        document.documentElement.dataset.themePreference = nextPreference;
+        document.documentElement.style.colorScheme = nextTheme;
+
+        const meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) {
+            meta.setAttribute("content", nextTheme === "dark" ? "#0c1916" : "#f7f3eb");
+        }
+
+        if (persist) {
+            try {
+                if (nextPreference === "system") {
+                    localStorage.removeItem(themeStorageKey);
+                } else {
+                    localStorage.setItem(themeStorageKey, nextPreference);
+                }
+            } catch {
+                // Private mode may disallow storage; the current page still follows the chosen preference.
+            }
+        }
+
+        updateThemeControls();
+        document.dispatchEvent(new CustomEvent("onda:themechange", {
+            detail: { theme: nextTheme, preference: nextPreference }
+        }));
+    }
+
+    function toggleTheme() {
+        applyTheme(currentTheme() === "dark" ? "light" : "dark", true);
+    }
+
+    function closeThemeMenus(except) {
+        document.querySelectorAll("[data-theme-control]").forEach((control) => {
+            if (!(control instanceof HTMLElement) || control === except) {
+                return;
+            }
+
+            const toggle = control.querySelector("[data-theme-toggle]");
+            const menu = control.querySelector("[data-theme-menu]");
+            if (menu instanceof HTMLElement) {
+                menu.hidden = true;
+            }
+            if (toggle instanceof HTMLElement) {
+                toggle.setAttribute("aria-expanded", "false");
+            }
+        });
+    }
+
+    function openThemeMenu(button, menu) {
+        const control = button.closest("[data-theme-control]");
+        closeThemeMenus(control);
+        menu.hidden = false;
+        button.setAttribute("aria-expanded", "true");
+
+        const selected = menu.querySelector('[data-theme-choice][aria-checked="true"]')
+            || menu.querySelector("[data-theme-choice]");
+        if (selected instanceof HTMLElement) {
+            selected.focus({ preventScroll: true });
+        }
+    }
+
+    if (!document.documentElement.dataset.theme) {
+        applyTheme(readThemePreference(), false);
+    } else {
+        if (!document.documentElement.dataset.themePreference) {
+            document.documentElement.dataset.themePreference = readThemePreference();
+        }
+        updateThemeControls();
+    }
+
+    document.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const choice = target.closest("[data-theme-choice]");
+        if (choice instanceof HTMLElement) {
+            event.preventDefault();
+            applyTheme(choice.dataset.themeChoice, true);
+            const control = choice.closest("[data-theme-control]");
+            closeThemeMenus();
+            control?.querySelector("[data-theme-toggle]")?.focus({ preventScroll: true });
+            return;
+        }
+
+        const button = target.closest("[data-theme-toggle]");
+        if (button instanceof HTMLElement) {
+            event.preventDefault();
+            updateThemeControls();
+            const menu = button.closest("[data-theme-control]")?.querySelector("[data-theme-menu]");
+            if (menu instanceof HTMLElement) {
+                if (menu.hidden) {
+                    openThemeMenu(button, menu);
+                } else {
+                    menu.hidden = true;
+                    button.setAttribute("aria-expanded", "false");
+                }
+            }
+            return;
+        }
+
+        if (!target.closest("[data-theme-control]")) {
+            closeThemeMenus();
+        }
+    });
+
+    // O Blazor renderiza o controle depois que este script carrega. Atualiza
+    // rótulos e itens marcados assim que o controle aparece (inclusive após
+    // navegação interna), sem precisar abrir o menu primeiro.
+    let themeControlUpdateScheduled = false;
+    const themeControlObserver = new MutationObserver(() => {
+        if (themeControlUpdateScheduled) {
+            return;
+        }
+
+        themeControlUpdateScheduled = true;
+        window.requestAnimationFrame(() => {
+            themeControlUpdateScheduled = false;
+            const control = document.querySelector("[data-theme-toggle]");
+            if (control instanceof HTMLElement && control.getAttribute("aria-label") === "Opções de tema") {
+                updateThemeControls();
+            }
+        });
+    });
+    themeControlObserver.observe(document.documentElement, { childList: true, subtree: true });
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+            const openMenu = document.querySelector("[data-theme-menu]:not([hidden])");
+            if (openMenu) {
+                const control = openMenu.closest("[data-theme-control]");
+                closeThemeMenus();
+                control?.querySelector("[data-theme-toggle]")?.focus({ preventScroll: true });
+            }
+            return;
+        }
+
+        const menu = event.target instanceof Element
+            ? event.target.closest("[data-theme-menu]")
+            : null;
+        if (!(menu instanceof HTMLElement) || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+            return;
+        }
+
+        const items = Array.from(menu.querySelectorAll("[data-theme-choice]"))
+            .filter((item) => item instanceof HTMLElement);
+        if (items.length === 0) {
+            return;
+        }
+
+        event.preventDefault();
+        const currentIndex = items.indexOf(document.activeElement);
+        let nextIndex = 0;
+        if (event.key === "End") {
+            nextIndex = items.length - 1;
+        } else if (event.key === "ArrowDown") {
+            nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % items.length;
+        } else if (event.key === "ArrowUp") {
+            nextIndex = currentIndex <= 0 ? items.length - 1 : currentIndex - 1;
+        }
+        items[nextIndex].focus({ preventScroll: true });
+    });
+
+    if (themeMedia) {
+        themeMedia.addEventListener("change", () => {
+            if (readThemePreference() === "system") {
+                applyTheme("system", false);
+            }
+        });
+    }
+
+    window.addEventListener("storage", (event) => {
+        if (event.key !== themeStorageKey) {
+            return;
+        }
+
+        applyTheme(
+            event.newValue === "light" || event.newValue === "dark" ? event.newValue : "system",
+            false);
+    });
+
 
     function removeBootScreen() {
         const boot = document.getElementById("boot-screen");
@@ -119,6 +360,10 @@
 
     function reloadPage() {
         window.location.reload();
+    }
+
+    function isFirefox() {
+        return /firefox|fxios/i.test(navigator.userAgent || "");
     }
 
     const screenQualityKey = "onda.screenQuality.v1";
@@ -399,6 +644,8 @@
         reloadPage,
         readScreenQuality,
         saveScreenQuality,
-        toggleFullscreen
+        toggleFullscreen,
+        isFirefox,
+        toggleTheme
     });
 })();

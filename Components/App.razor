@@ -5,16 +5,37 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#f7f3eb" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
     <meta name="description" content="Onda é um espaço no navegador para conversar por voz, compartilhar a tela e a webcam, e trocar mensagens. Crie uma sala e convide quem você quiser." />
     <meta property="og:title" content="Onda — conversas que fluem" />
     <meta property="og:description" content="Voz, tela e presença no navegador. Crie uma sala e convide quem você quiser." />
     <meta property="og:type" content="website" />
     <base href="/" />
+    <script>
+        (() => {
+            const key = "onda.theme";
+            let stored = null;
+            try { stored = localStorage.getItem(key); } catch { }
+            const preference = stored === "light" || stored === "dark" ? stored : "system";
+            const systemDark = window.matchMedia
+                && window.matchMedia("(prefers-color-scheme: dark)").matches;
+            const theme = preference === "system"
+                ? (systemDark ? "dark" : "light")
+                : preference;
+            document.documentElement.dataset.theme = theme;
+            document.documentElement.dataset.themePreference = preference;
+            document.documentElement.style.colorScheme = theme;
+            const meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) {
+                meta.setAttribute("content", theme === "dark" ? "#0c1916" : "#f7f3eb");
+            }
+        })();
+    </script>
     <ResourcePreloader />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
     <link rel="stylesheet" href="@Assets["Onda.styles.css"]" />
+    <link rel="stylesheet" href="@Assets["theme.css"]" />
     <ImportMap />
     <HeadOutlet @rendermode="new InteractiveServerRenderMode(prerender: false)" />
 </head>

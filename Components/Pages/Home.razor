@@ -21,6 +21,7 @@
             </nav>
 
             <div class="nav-actions">
+                <ThemeToggle />
                 <button type="button" class="user-chip" @onclick="OpenNameDialog" aria-label="Editar seu nome">
                     <Avatar Name="@Guest.Name" Tone="@Guest.AvatarTone" Size="28" />
                     <span class="user-chip-name">@Guest.Name</span>
@@ -44,13 +45,13 @@
                 <div class="hero-copy">
                     <p class="eyebrow hero-eyebrow">
                         <span class="live-dot" aria-hidden="true"></span>
-                        Voz, tela e presença — direto no navegador
+                        Voz, tela, chat e presença — direto no navegador
                     </p>
 
                     <h1>Conversas<br />que <em>fluem.</em></h1>
 
                     <p class="hero-lede">
-                        Crie uma sala, chame quem importa e converse por voz, webcam e tela.
+                        Crie uma sala, chame quem importa e converse por voz, webcam, tela e chat.
                         Sem download. Sem complicação. Só presença.
                     </p>
 
@@ -169,19 +170,19 @@
             <div class="shell signal-grid">
                 <div class="signal-item">
                     <span class="signal-icon"><Icon Name="headphones" Size="19" /></span>
-                    <div><strong>Voz nítida</strong><span>Áudio em tempo real, direto entre vocês.</span></div>
+                    <div><strong>Voz nítida</strong><span>Áudio em tempo real, com volume individual por pessoa.</span></div>
                 </div>
                 <div class="signal-item">
                     <span class="signal-icon"><Icon Name="screen" Size="19" /></span>
-                    <div><strong>Tela e webcam</strong><span>Mostre o que importa, sem sair da conversa.</span></div>
+                    <div><strong>Tela, som e câmera</strong><span>Compartilhe, troque de tela e ajuste a qualidade sem encerrar a chamada.</span></div>
                 </div>
                 <div class="signal-item">
                     <span class="signal-icon"><Icon Name="volume" Size="19" /></span>
-                    <div><strong>Seu volume, seu jeito</strong><span>Ajuste cada pessoa e cada tela individualmente.</span></div>
+                    <div><strong>Controle local</strong><span>Volume da voz e da tela, mute, tela cheia e overlays discretos.</span></div>
                 </div>
                 <div class="signal-item">
                     <span class="signal-icon"><Icon Name="shield" Size="19" /></span>
-                    <div><strong>Entrada protegida</strong><span>Salas abertas ou com senha. Você escolhe.</span></div>
+                    <div><strong>Entrada protegida</strong><span>Salas abertas ou com senha. O histórico some quando a sala esvazia.</span></div>
                 </div>
             </div>
         </section>
@@ -318,7 +319,7 @@
                         <span class="step-number">03</span>
                         <span class="step-icon"><Icon Name="wave" Size="21" /></span>
                         <h3>Converse de verdade</h3>
-                        <p>Ligue o microfone, abra a câmera, compartilhe a tela e ajuste o volume de cada pessoa.</p>
+                        <p>Ligue o microfone, abra a câmera, compartilhe a tela e troque mensagens. Ajuste o volume de cada pessoa e mude a qualidade durante a transmissão.</p>
                     </article>
                 </div>
 
@@ -327,9 +328,9 @@
                     <div class="privacy-copy">
                         <span class="privacy-icon"><Icon Name="shield" Size="22" /></span>
                         <div>
-                            <p class="eyebrow">Feita para a sua conversa</p>
-                            <h3>Sala aberta para chegar. Senha para entrar.</h3>
-                            <p>O link sozinho não basta quando a sala tem senha. Você decide quem atravessa a porta.</p>
+                            <p class="eyebrow">Privacidade por padrão</p>
+                            <h3>Sua conversa some quando a sala esvazia.</h3>
+                            <p>Sem contas e sem gravação. O link e a senha decidem quem entra; ao sair a última pessoa, a sala e todo o histórico são apagados.</p>
                         </div>
                     </div>
                     <button type="button" class="button button-accent" @onclick="OpenCreateDialog">

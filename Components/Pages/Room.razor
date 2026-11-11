@@ -51,7 +51,10 @@ else if (!_joined)
 
         <header class="gate-header">
             <Brand Light="true" />
-            <a class="gate-back" href="/"><Icon Name="arrow-left" Size="15" /> <span>Voltar ao início</span></a>
+            <div class="gate-header-actions">
+                <ThemeToggle />
+                <a class="gate-back" href="/"><Icon Name="arrow-left" Size="15" /> <span>Voltar ao início</span></a>
+            </div>
         </header>
 
         <main class="gate-main">
@@ -202,6 +205,7 @@ else
 
             <div class="room-header-actions">
                 <span class="room-live-badge"><span class="live-dot"></span> ao vivo</span>
+                <ThemeToggle />
                 <button type="button" class="room-header-button" @onclick="OpenQualityDialog"
                         aria-label="Ajustes de qualidade da transmissão"
                         title="@($"Qualidade da transmissão: {_screenQuality.Summary}")">
@@ -259,6 +263,28 @@ else
                                 {
                                     <button type="button" class="stage-grid-button" @onclick="ClearFocus">
                                         <Icon Name="grid" Size="14" /> Ver grade
+                                    </button>
+                                }
+                                @if (_localScreenOn)
+                                {
+                                    <button type="button"
+                                            class="stage-grid-button stage-screen-control"
+                                            aria-label="Trocar a tela compartilhada"
+                                            title="Trocar a tela compartilhada"
+                                            disabled="@(_actionPending is not null)"
+                                            @onclick="SwitchScreenAsync">
+                                        <Icon Name="swap" Size="14" />
+                                        <span class="stage-button-label">Trocar tela</span>
+                                    </button>
+                                    <button type="button"
+                                            class="stage-grid-button stage-screen-control @(_localScreenAudioEnabled ? "is-on" : null)"
+                                            aria-label="@ScreenAudioActionLabel"
+                                            aria-pressed="@(_localScreenAudioEnabled ? "true" : "false")"
+                                            title="@ScreenAudioTitle"
+                                            disabled="@(!_localScreenWithAudio || _actionPending is not null)"
+                                            @onclick="ToggleScreenAudioAsync">
+                                        <Icon Name="@(_localScreenWithAudio && _localScreenAudioEnabled ? "volume" : "volume-off")" Size="14" />
+                                        <span class="stage-button-label">@ScreenAudioLabel</span>
                                     </button>
                                 }
                                 <button type="button"
@@ -892,17 +918,43 @@ else
             </label>
         </div>
 
+        @if (_isFirefox)
+        {
+            <div class="quality-browser-warning" role="note">
+                <Icon Name="alert" Size="17" />
+                <span>
+                    <strong>Firefox:</strong> o navegador não captura o áudio da tela.
+                    Use Chrome ou Edge para compartilhar som; o microfone continua funcionando.
+                </span>
+            </div>
+        }
+
         <p class="quality-note">
             <Icon Name="alert" Size="15" />
             <span>
-                Resolução, FPS e bitrate são aplicados ao próximo compartilhamento de tela.
-                @if (_isSfu)
+                @if (_localScreenOn)
                 {
-                    <text> O codec escolhido também vale para o próximo compartilhamento.</text>
+                    <text>As alterações são aplicadas à transmissão atual.</text>
+                    @if (_isSfu)
+                    {
+                        <text> Resolução, FPS, bitrate e prioridade são aplicados agora; o codec será usado no próximo compartilhamento.</text>
+                    }
+                    else
+                    {
+                        <text> No P2P, resolução, FPS e bitrate são aplicados agora; o codec só muda ao entrar novamente.</text>
+                    }
                 }
                 else
                 {
-                    <text> No modo P2P, o codec é negociado ao entrar na sala; para trocá-lo, entre novamente após salvar.</text>
+                    <text>Resolução, FPS e bitrate são aplicados ao próximo compartilhamento de tela.</text>
+                    @if (_isSfu)
+                    {
+                        <text> O codec escolhido também vale para o próximo compartilhamento.</text>
+                    }
+                    else
+                    {
+                        <text> No modo P2P, o codec é negociado ao entrar na sala; para trocá-lo, entre novamente após salvar.</text>
+                    }
                 }
                 A disponibilidade depende do navegador e do servidor; pode haver fallback.
             </span>
@@ -962,6 +1014,11 @@ else
     private bool _hasMic;
     private bool _localCameraOn;
     private bool _localScreenOn;
+    private bool _localScreenWithAudio;
+    private bool _localScreenAudioEnabled;
+    private bool _isFirefox;
+    private bool _browserChecked;
+    private bool _screenAudioWarningShown;
 
     private string? _focusedPeerId;
     private string? _volumePeerId;
@@ -1091,6 +1148,20 @@ else
             }
 
             return;
+        }
+
+        if (!_browserChecked)
+        {
+            _browserChecked = true;
+            try
+            {
+                _isFirefox = await JS.InvokeAsync<bool>("onda.isFirefox");
+                StateHasChanged();
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                // A página continua funcionando mesmo sem a detecção do navegador.
+            }
         }
 
         if (!_jsReady && !_jsInitializing && _jsError is null)
@@ -1546,7 +1617,32 @@ else
         _localMicOn = micOn;
         _hasMic = hasMic;
         _localCameraOn = cameraOn;
+        var wasScreenOn = _localScreenOn;
+        var hadScreenAudio = _localScreenWithAudio;
         _localScreenOn = screenOn;
+        _localScreenWithAudio = screenWithAudio;
+
+        if (!screenOn)
+        {
+            _localScreenAudioEnabled = false;
+            _screenAudioWarningShown = false;
+        }
+        else if (!wasScreenOn || (!hadScreenAudio && screenWithAudio))
+        {
+            _localScreenAudioEnabled = screenWithAudio;
+        }
+
+        if (screenOn && screenWithAudio)
+        {
+            _screenAudioWarningShown = false;
+        }
+        else if (screenOn && _isFirefox && !_screenAudioWarningShown)
+        {
+            _screenAudioWarningShown = true;
+            Toasts.Show(
+                "O Firefox não captura áudio da tela. O microfone continua funcionando; para transmitir som, use Chrome ou Edge.",
+                ToastKind.Info);
+        }
 
         if (_joined)
         {
@@ -1665,6 +1761,78 @@ else
             StateHasChanged();
         }
     }
+
+    private async Task SwitchScreenAsync()
+    {
+        if (_jsModule is null || _actionPending is not null || !_localScreenOn)
+        {
+            return;
+        }
+
+        _actionPending = "screen";
+        try
+        {
+            await _jsModule.InvokeAsync<bool>("switchScreenSource");
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            Toasts.Show("Não foi possível trocar a tela compartilhada.", ToastKind.Error);
+        }
+        finally
+        {
+            _actionPending = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleScreenAudioAsync()
+    {
+        if (_jsModule is null || _actionPending is not null || !_localScreenWithAudio)
+        {
+            return;
+        }
+
+        var nextEnabled = !_localScreenAudioEnabled;
+        _actionPending = "screen-audio";
+        try
+        {
+            var changed = await _jsModule.InvokeAsync<bool>("setScreenAudioEnabled", nextEnabled);
+            if (changed)
+            {
+                _localScreenAudioEnabled = nextEnabled;
+                Toasts.Show(
+                    nextEnabled ? "Áudio da tela ativado." : "Áudio da tela silenciado.",
+                    ToastKind.Info);
+            }
+            else
+            {
+                Toasts.Show("Esta transmissão não tem uma faixa de áudio da tela.", ToastKind.Error);
+            }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            Toasts.Show("Não foi possível alterar o áudio da tela.", ToastKind.Error);
+        }
+        finally
+        {
+            _actionPending = null;
+            StateHasChanged();
+        }
+    }
+
+    private string ScreenAudioLabel => !_localScreenWithAudio
+        ? "Sem áudio"
+        : _localScreenAudioEnabled ? "Som" : "Mudo";
+
+    private string ScreenAudioActionLabel => !_localScreenWithAudio
+        ? "Áudio da tela indisponível"
+        : _localScreenAudioEnabled ? "Silenciar áudio da tela" : "Ativar áudio da tela";
+
+    private string ScreenAudioTitle => !_localScreenWithAudio
+        ? (_isFirefox
+            ? "O Firefox não captura áudio da tela. Para transmitir som, use Chrome ou Edge."
+            : "Esta transmissão não foi iniciada com áudio. Troque a tela para incluir som.")
+        : _localScreenAudioEnabled ? "Silenciar áudio da tela" : "Ativar áudio da tela";
 
     private async Task ResumeAudioAsync()
     {
@@ -2049,7 +2217,9 @@ else
 
     private async Task SaveQualityAsync()
     {
+        var previousCodec = _screenQuality.Codec;
         _screenQuality = _qualityDraft.Clone().Normalize();
+        var codecChanged = !string.Equals(previousCodec, _screenQuality.Codec, StringComparison.OrdinalIgnoreCase);
         _qualityDraft = _screenQuality.Clone();
         _showQualityDialog = false;
 
@@ -2067,7 +2237,31 @@ else
         {
             try
             {
-                await _jsModule.InvokeVoidAsync("setScreenQuality", ToJsQuality(_screenQuality));
+                var appliedToActiveShare = await _jsModule.InvokeAsync<bool>(
+                    "setScreenQuality",
+                    ToJsQuality(_screenQuality));
+
+                if (_localScreenOn)
+                {
+                    if (appliedToActiveShare)
+                    {
+                        Toasts.Show(
+                            codecChanged
+                                ? (_isSfu
+                                    ? "Ajustes aplicados à transmissão atual. O novo codec será usado no próximo compartilhamento."
+                                    : "Ajustes aplicados à transmissão atual. O novo codec será usado quando você entrar novamente na sala.")
+                                : "Ajustes aplicados à transmissão atual.",
+                            ToastKind.Success);
+                    }
+                    else
+                    {
+                        Toasts.Show(
+                            "Os ajustes foram salvos, mas não puderam ser aplicados à transmissão atual.",
+                            ToastKind.Error);
+                    }
+
+                    return;
+                }
             }
             catch (Exception ex) when (ex is JSException or JSDisconnectedException)
             {
