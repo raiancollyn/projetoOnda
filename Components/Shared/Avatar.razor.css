@@ -1,0 +1,95 @@
+.avatar {
+    --avatar-size: 44px;
+    --avatar-font-size: 16px;
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: var(--avatar-size);
+    height: var(--avatar-size);
+    border-radius: 35% 65% 58% 42% / 48% 44% 56% 52%;
+    color: #fff;
+    background: #4e6b62;
+    font-size: var(--avatar-font-size);
+    font-weight: 760;
+    letter-spacing: -0.035em;
+    line-height: 1;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15), 0 5px 14px rgba(9, 22, 18, 0.16);
+    transition: box-shadow 220ms ease, transform 220ms ease, filter 220ms ease;
+    isolation: isolate;
+}
+
+.avatar-initials {
+    position: relative;
+    z-index: 1;
+    transform: translateY(0.02em);
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.15);
+}
+
+.tone-0 {
+    background: linear-gradient(145deg, #ff826a, #e74f45);
+}
+
+.tone-1 {
+    background: linear-gradient(145deg, #6ed9be, #207d6e);
+}
+
+.tone-2 {
+    background: linear-gradient(145deg, #a6a7ff, #6358bf);
+}
+
+.tone-3 {
+    background: linear-gradient(145deg, #ffd47c, #d4882d);
+    color: #3b2610;
+}
+
+.tone-4 {
+    background: linear-gradient(145deg, #8ecdf4, #3b76a5);
+}
+
+.tone-5 {
+    background: linear-gradient(145deg, #ef9bc4, #ad4f7b);
+}
+
+.avatar.is-speaking {
+    transform: scale(1.02);
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+        0 0 0 3px rgba(205, 242, 124, 0.92),
+        0 0 0 7px rgba(205, 242, 124, 0.14),
+        0 8px 24px rgba(8, 22, 18, 0.24);
+}
+
+.avatar.is-dimmed {
+    filter: saturate(0.45) brightness(0.8);
+}
+
+.avatar-speaking-orbit {
+    position: absolute;
+    inset: -5px;
+    border-radius: 38% 62% 54% 46% / 46% 40% 60% 54%;
+    border: 1px solid rgba(205, 242, 124, 0.45);
+    animation: avatar-orbit 2.4s ease-out infinite;
+    pointer-events: none;
+    z-index: -1;
+}
+
+@keyframes avatar-orbit {
+    0% {
+        opacity: 0.75;
+        transform: scale(0.92);
+    }
+
+    75%,
+    100% {
+        opacity: 0;
+        transform: scale(1.24);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .avatar-speaking-orbit {
+        animation: none;
+        opacity: 0.35;
+    }
+}

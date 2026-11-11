@@ -1,0 +1,8 @@
+{$ONDA_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy onda:8080
+}
+
+{$LIVEKIT_DOMAIN} {
+    reverse_proxy livekit:7880
+}

@@ -1,0 +1,36 @@
+# Optional TLS overlay for Docker Compose.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d --build
+#
+# Requirements:
+#   - ONDA_DOMAIN and LIVEKIT_DOMAIN configured in deploy/.env
+#   - DNS A/AAAA records pointing both hostnames to this server
+#   - ports 80 and 443 open (TCP and, for HTTP/3, UDP 443)
+#
+# WebRTC media still uses UDP 50000-50040 and TURN 3478/49160-49200 directly;
+# only HTTPS/WSS is proxied by Caddy.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      ONDA_DOMAIN: ${ONDA_DOMAIN:?Define ONDA_DOMAIN in deploy/.env}
+      LIVEKIT_DOMAIN: ${LIVEKIT_DOMAIN:?Define LIVEKIT_DOMAIN in deploy/.env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - onda
+      - livekit
+    networks:
+      - onda
+
+volumes:
+  caddy_data:
+  caddy_config:

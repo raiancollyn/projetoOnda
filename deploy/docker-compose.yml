@@ -1,0 +1,84 @@
+name: onda
+
+services:
+  onda:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: onda-app:latest
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      HttpsRedirection__Enabled: "false"
+      App__PublicUrl: ${APP_PUBLIC_URL:-http://localhost:8080}
+      Storage__DatabasePath: /data/onda.db
+      Media__Provider: LiveKit
+      Media__MaxParticipants: ${MAX_PARTICIPANTS:-25}
+      Media__LiveKit__Url: ${LIVEKIT_PUBLIC_URL:-ws://localhost:7880}
+      Media__LiveKit__ApiKey: ${LIVEKIT_API_KEY:?Define LIVEKIT_API_KEY in deploy/.env}
+      Media__LiveKit__ApiSecret: ${LIVEKIT_API_SECRET:?Define LIVEKIT_API_SECRET in deploy/.env}
+      Media__LiveKit__TokenTtlHours: ${LIVEKIT_TOKEN_TTL_HOURS:-6}
+      Media__IceServers__0__Urls__0: ${TURN_URL:-}
+      Media__IceServers__0__Username: ${TURN_USERNAME:-}
+      Media__IceServers__0__Credential: ${TURN_PASSWORD:-}
+      Media__IceServers__1__Urls__0: stun:stun.l.google.com:19302
+      Media__IceServers__1__Urls__1: stun:stun.cloudflare.com:3478
+    ports:
+      - "${APP_BIND:-0.0.0.0}:${APP_PORT:-8080}:8080"
+    volumes:
+      - onda_data:/data
+    depends_on:
+      - livekit
+      - turn
+    networks:
+      - onda
+
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    restart: unless-stopped
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?Define LIVEKIT_API_KEY in deploy/.env}: ${LIVEKIT_API_SECRET:?Define LIVEKIT_API_SECRET in deploy/.env}"
+      LIVEKIT_PORT: "7880"
+      LIVEKIT_RTC_TCP_PORT: "7881"
+      LIVEKIT_RTC_PORT_RANGE_START: "50000"
+      LIVEKIT_RTC_PORT_RANGE_END: "50040"
+      LIVEKIT_RTC_USE_EXTERNAL_IP: ${LIVEKIT_USE_EXTERNAL_IP:-true}
+      LIVEKIT_LOG_LEVEL: info
+      # Se a descoberta automática de IP falhar, descomente e informe o IP
+      # público da VPS:
+      # NODE_IP: "203.0.113.10"
+    ports:
+      - "${LIVEKIT_BIND:-0.0.0.0}:7880:7880/tcp"
+      - "${LIVEKIT_BIND:-0.0.0.0}:7881:7881/tcp"
+      - "50000-50040:50000-50040/udp"
+    networks:
+      - onda
+
+  turn:
+    image: coturn/coturn:4.18.0
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/opt/onda/turn-entrypoint.sh"]
+    environment:
+      TURN_USERNAME: ${TURN_USERNAME:?Define TURN_USERNAME in deploy/.env}
+      TURN_PASSWORD: ${TURN_PASSWORD:?Define TURN_PASSWORD in deploy/.env}
+      TURN_REALM: ${TURN_REALM:-onda}
+      TURN_EXTERNAL_IP: ${TURN_EXTERNAL_IP:?Define TURN_EXTERNAL_IP in deploy/.env}
+      TURN_MIN_PORT: "49160"
+      TURN_MAX_PORT: "49200"
+    volumes:
+      - ./coturn/turn-entrypoint.sh:/opt/onda/turn-entrypoint.sh:ro
+    ports:
+      - "3478:3478/tcp"
+      - "3478:3478/udp"
+      - "49160-49200:49160-49200/udp"
+    networks:
+      - onda
+
+networks:
+  onda:
+    driver: bridge
+
+volumes:
+  onda_data:

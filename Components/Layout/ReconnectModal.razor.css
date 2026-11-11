@@ -1,0 +1,181 @@
+.components-reconnect-first-attempt-visible,
+.components-reconnect-repeated-attempt-visible,
+.components-reconnect-failed-visible,
+.components-pause-visible,
+.components-resume-failed-visible,
+.reconnect-hint,
+.reconnect-mark {
+    display: none;
+}
+
+#components-reconnect-modal.components-reconnect-show .components-reconnect-first-attempt-visible,
+#components-reconnect-modal.components-reconnect-show .reconnect-mark,
+#components-reconnect-modal.components-reconnect-show .reconnect-hint,
+#components-reconnect-modal.components-reconnect-paused .components-pause-visible,
+#components-reconnect-modal.components-reconnect-paused .reconnect-mark,
+#components-reconnect-modal.components-reconnect-paused .reconnect-hint,
+#components-reconnect-modal.components-reconnect-resume-failed .components-resume-failed-visible,
+#components-reconnect-modal.components-reconnect-retrying,
+#components-reconnect-modal.components-reconnect-retrying .components-reconnect-repeated-attempt-visible,
+#components-reconnect-modal.components-reconnect-retrying .reconnect-mark,
+#components-reconnect-modal.components-reconnect-retrying .reconnect-hint,
+#components-reconnect-modal.components-reconnect-failed,
+#components-reconnect-modal.components-reconnect-failed .components-reconnect-failed-visible,
+#components-reconnect-modal.components-reconnect-failed .reconnect-mark,
+#components-reconnect-modal.components-reconnect-failed .reconnect-hint {
+    display: block;
+}
+
+#components-reconnect-modal {
+    width: min(91vw, 22rem);
+    margin: auto;
+    padding: 1.8rem;
+    border: 1px solid rgba(247, 243, 235, 0.1);
+    border-radius: 1.45rem;
+    background:
+        radial-gradient(circle at 85% 0, rgba(205, 242, 124, 0.15), transparent 35%),
+        var(--forest);
+    color: var(--cream);
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.45);
+    font-family: var(--font-body);
+    text-align: center;
+    opacity: 0;
+    animation: reconnect-enter 280ms var(--ease-out) both;
+}
+
+#components-reconnect-modal:focus,
+#components-reconnect-modal:focus-visible {
+    outline: none;
+}
+
+#components-reconnect-modal[open] {
+    opacity: 1;
+}
+
+#components-reconnect-modal::backdrop {
+    background: rgba(4, 12, 9, 0.65);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.components-reconnect-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.7rem;
+}
+
+.reconnect-mark {
+    width: 3rem;
+    height: 3rem;
+    margin-bottom: 0.25rem;
+    border: 1px solid rgba(205, 242, 124, 0.18);
+    border-radius: 50%;
+    background: rgba(205, 242, 124, 0.07);
+}
+
+.reconnect-wave {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2.5px;
+    width: 100%;
+    height: 100%;
+}
+
+.reconnect-wave i {
+    display: block;
+    width: 2px;
+    height: 25%;
+    border-radius: 2px;
+    background: var(--lime);
+    animation: reconnect-wave 1s ease-in-out infinite;
+}
+
+.reconnect-wave i:nth-child(2) {
+    height: 55%;
+    animation-delay: -0.16s;
+}
+
+.reconnect-wave i:nth-child(3) {
+    height: 85%;
+    animation-delay: -0.3s;
+}
+
+.reconnect-wave i:nth-child(4) {
+    height: 50%;
+    animation-delay: -0.44s;
+}
+
+.reconnect-wave i:nth-child(5) {
+    height: 30%;
+    animation-delay: -0.58s;
+}
+
+.reconnect-kicker {
+    margin: 0;
+    color: var(--lime);
+    font-size: 0.56rem;
+    font-weight: 720;
+    letter-spacing: 0.15em;
+}
+
+#components-reconnect-modal p {
+    margin: 0;
+    color: rgba(247, 243, 235, 0.7);
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
+#components-reconnect-modal .reconnect-hint {
+    margin-top: 0.35rem;
+    color: rgba(247, 243, 235, 0.32);
+    font-size: 0.61rem;
+}
+
+#components-reconnect-modal button {
+    margin-top: 0.35rem;
+    padding: 0.65rem 1rem;
+    border: 0;
+    border-radius: 999px;
+    background: var(--lime);
+    color: var(--ink);
+    font-size: 0.74rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color 160ms ease, transform 200ms var(--ease-out);
+}
+
+#components-reconnect-modal button:hover {
+    background: var(--lime-bright);
+    transform: translateY(-1px);
+}
+
+@keyframes reconnect-enter {
+    from {
+        opacity: 0;
+        transform: translateY(10px) scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes reconnect-wave {
+    0%, 100% {
+        transform: scaleY(0.4);
+    }
+
+    50% {
+        transform: scaleY(1);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #components-reconnect-modal,
+    .reconnect-wave i {
+        animation: none;
+    }
+}

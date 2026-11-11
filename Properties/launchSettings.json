@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+    "profiles": {
+      "http": {
+        "commandName": "Project",
+        "dotnetRunMessages": true,
+        "launchBrowser": true,
+        "applicationUrl": "http://localhost:5062",
+        "environmentVariables": {
+          "ASPNETCORE_ENVIRONMENT": "Development"
+        }
+      },
+      "https": {
+        "commandName": "Project",
+        "dotnetRunMessages": true,
+        "launchBrowser": true,
+        "applicationUrl": "https://localhost:7031;http://localhost:5062",
+        "environmentVariables": {
+          "ASPNETCORE_ENVIRONMENT": "Development"
+        }
+      },
+      "sfu": {
+        "commandName": "Project",
+        "dotnetRunMessages": true,
+        "launchBrowser": true,
+        "applicationUrl": "http://localhost:5062",
+        "environmentVariables": {
+          "ASPNETCORE_ENVIRONMENT": "Development",
+          "App__PublicUrl": "http://localhost:5062",
+          "Media__Provider": "LiveKit",
+          "Media__MaxParticipants": "25",
+          "Media__LiveKit__Url": "ws://127.0.0.1:7880",
+          "Media__LiveKit__ApiKey": "devkey",
+          "Media__LiveKit__ApiSecret": "secret"
+        }
+      }
+    }
+  }

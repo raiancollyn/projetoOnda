@@ -1,0 +1,32 @@
+<script type="module" src="@Assets["Components/Layout/ReconnectModal.razor.js"]"></script>
+
+<dialog id="components-reconnect-modal" data-nosnippet>
+    <div class="components-reconnect-container">
+        <div class="reconnect-mark" aria-hidden="true">
+            <span class="reconnect-wave"><i></i><i></i><i></i><i></i><i></i></span>
+        </div>
+        <p class="reconnect-kicker">ONDA EM ESPERA</p>
+        <p class="components-reconnect-first-attempt-visible">
+            Reconectando a sua sala...
+        </p>
+        <p class="components-reconnect-repeated-attempt-visible">
+            Ainda sem sinal. Tentando de novo em <span id="components-seconds-to-next-attempt"></span>s.
+        </p>
+        <p class="components-reconnect-failed-visible">
+            Não foi possível reconectar.<br />Tente novamente ou recarregue a página.
+        </p>
+        <button id="components-reconnect-button" class="components-reconnect-failed-visible">
+            Tentar novamente
+        </button>
+        <p class="components-pause-visible">
+            Sua sessão foi pausada pelo servidor.
+        </p>
+        <p class="components-resume-failed-visible">
+            Não foi possível retomar a sessão.<br />Recarregue a página para voltar.
+        </p>
+        <button id="components-resume-button" class="components-pause-visible components-resume-failed-visible">
+            Retomar sessão
+        </button>
+        <p class="reconnect-hint">Sua sala e sua conversa continuam esperando.</p>
+    </div>
+</dialog>

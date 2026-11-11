@@ -1,0 +1,51 @@
+@using System.Text
+
+<span class="avatar tone-@Tone @(Speaking ? "is-speaking" : null) @(Dimmed ? "is-dimmed" : null)"
+      style="--avatar-size:@(Size)px; --avatar-font-size:@(FontSize)px"
+      aria-hidden="true">
+    <span class="avatar-initials">@Initials</span>
+    @if (Speaking)
+    {
+        <span class="avatar-speaking-orbit"></span>
+    }
+</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Name { get; set; } = string.Empty;
+
+    [Parameter]
+    public int Tone { get; set; }
+
+    [Parameter]
+    public int Size { get; set; } = 44;
+
+    [Parameter]
+    public bool Speaking { get; set; }
+
+    [Parameter]
+    public bool Dimmed { get; set; }
+
+    private string FontSize => Math.Max(11, (int)Math.Round(Size * 0.36)).ToString();
+
+    private string Initials
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(Name))
+            {
+                return "?";
+            }
+
+            var parts = Name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var builder = new StringBuilder(2);
+            builder.Append(char.ToUpperInvariant(parts[0][0]));
+            if (parts.Length > 1 && !char.IsDigit(parts[^1][0]))
+            {
+                builder.Append(char.ToUpperInvariant(parts[^1][0]));
+            }
+
+            return builder.ToString();
+        }
+    }
+}

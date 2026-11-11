@@ -1,0 +1,54 @@
+@page "/Error"
+@using System.Diagnostics
+@inject NavigationManager NavigationManager
+
+<PageTitle>Algo saiu do tom · Onda</PageTitle>
+
+<div class="error-page">
+    <header class="error-header">
+        <Brand />
+    </header>
+
+    <main class="error-main">
+        <span class="error-glyph"><Icon Name="alert" Size="30" /></span>
+        <p class="eyebrow">UM ACORDE FORA DO LUGAR</p>
+        <h1>Algo saiu<br />do tom.</h1>
+        <p class="error-copy">Não foi possível concluir esta ação agora. Tente mais uma vez — se a nota desafinar de novo, volte ao início e recomece a conversa.</p>
+
+        @if (ShowRequestId)
+        {
+            <p class="error-request">Referência: <code>@RequestId</code></p>
+        }
+
+        <div class="error-actions">
+            <a class="button button-primary" href="/"><Icon Name="wave" Size="17" /> Voltar ao início</a>
+            <button type="button" class="button button-ghost" @onclick="ReloadPage">Tentar novamente</button>
+        </div>
+    </main>
+
+    <footer class="error-footer">
+        <span>Onda · conversas que fluem</span>
+        <span>Se o problema continuar, recarregue a página.</span>
+    </footer>
+</div>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    [PersistentState]
+    public string? RequestId { get; set; }
+
+    private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+
+    protected override void OnInitialized()
+    {
+        RequestId ??= Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+    }
+
+    private void ReloadPage()
+    {
+        // A full reload gives the circuit and the server a clean start.
+        NavigationManager.NavigateTo(NavigationManager.BaseUri, forceLoad: true);
+    }
+}

@@ -1,0 +1,82 @@
+{
+    "_comment": "LiveKit SFU standalone para Pterodactyl. O app Onda aponta para este servidor.",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2026-11-10T19:40:00-04:00",
+    "name": "LiveKit SFU",
+    "author": "onda",
+    "description": "LiveKit 1.13.11 standalone para o Onda. Use como servidor de mídia externo do egg do app. Requer alocações separadas para signaling, RTC/TCP e RTC/UDP; TLS é feito por um proxy reverso.",
+    "features": null,
+    "docker_images": {
+        "Debian (Pterodactyl yolk)": "ghcr.io/ptero-eggs/yolks:debian"
+    },
+    "file_denylist": [],
+    "startup": "/home/container/livekit-server --bind 0.0.0.0 --port {{SERVER_PORT}} --rtc.tcp_port {{RTC_TCP_PORT}} --rtc.port_range_start {{RTC_UDP_PORT}} --rtc.port_range_end {{RTC_UDP_PORT}}",
+    "config": {
+        "files": "{}",
+        "startup": "{\n  \"done\": [\n    \"starting LiveKit server\"\n  ]\n}",
+        "logs": "{}",
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin/bash\nset -euo pipefail\n\n# Pterodactyl installation container; server volume is mounted at /mnt/server.\napt-get update -y\napt-get install -y --no-install-recommends ca-certificates curl tar\n\nVERSION=\"1.13.11\"\ncase \"$(uname -m)\" in\n    x86_64|amd64)  ARCH=\"amd64\" ;;\n    aarch64|arm64) ARCH=\"arm64\" ;;\n    armv7l|armv7)  ARCH=\"armv7\" ;;\n    *)\n        echo \"Arquitetura não suportada: $(uname -m)\" >&2\n        exit 1\n        ;;\nesac\n\nmkdir -p /mnt/server\ncd /mnt/server\n\nTMP=\"$(mktemp -d)\"\ntrap 'rm -rf \"$TMP\"' EXIT\n\nURL=\"https://github.com/livekit/livekit/releases/download/v${VERSION}/livekit_${VERSION}_linux_${ARCH}.tar.gz\"\necho \"Baixando ${URL}\"\ncurl -fsSL \"$URL\" -o \"$TMP/livekit.tar.gz\"\ntar -xzf \"$TMP/livekit.tar.gz\" -C /mnt/server livekit-server\nchmod +x /mnt/server/livekit-server\n\necho \"-----------------------------------------\"\necho \"LiveKit ${VERSION} instalado em /mnt/server/livekit-server\"\necho \"Crie as alocações de signaling, RTC/TCP e RTC/UDP antes de iniciar.\"\necho \"-----------------------------------------\"\n",
+            "container": "ghcr.io/ptero-eggs/installers:debian",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": [
+        {
+            "name": "LiveKit keys",
+            "description": "Par apiKey: apiSecret. Use o mesmo par no egg do Onda (LIVEKIT_API_KEY/LIVEKIT_API_SECRET). O secret do LiveKit precisa ter pelo menos 32 caracteres.",
+            "env_variable": "LIVEKIT_KEYS",
+            "default_value": "devkey: 0123456789abcdef0123456789abcdef",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string",
+            "field_type": "text"
+        },
+        {
+            "name": "RTC TCP port",
+            "description": "Porta TCP de mídia do LiveKit. Precisa corresponder a uma alocação TCP adicional do servidor.",
+            "env_variable": "RTC_TCP_PORT",
+            "default_value": "7881",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|integer|between:1,65535",
+            "field_type": "text"
+        },
+        {
+            "name": "RTC UDP port",
+            "description": "Porta UDP de mídia do LiveKit. Precisa corresponder a uma alocação UDP adicional. Um único port é suportado; para escalar, prefira VPS/Compose.",
+            "env_variable": "RTC_UDP_PORT",
+            "default_value": "7882",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|integer|between:1,65535",
+            "field_type": "text"
+        },
+        {
+            "name": "Use external IP",
+            "description": "true faz o LiveKit anunciar o IP público descoberto via STUN. Use false apenas em rede local.",
+            "env_variable": "LIVEKIT_RTC_USE_EXTERNAL_IP",
+            "default_value": "true",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|boolean",
+            "field_type": "text"
+        },
+        {
+            "name": "Log level",
+            "description": "debug, info, warn ou error.",
+            "env_variable": "LIVEKIT_LOG_LEVEL",
+            "default_value": "info",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string",
+            "field_type": "text"
+        }
+    ]
+}

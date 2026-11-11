@@ -1,0 +1,2138 @@
+@page "/sala/{Code}"
+@implements IAsyncDisposable
+@using System.Text.Json
+
+@inject GuestSession Guest
+@inject RoomService Rooms
+@inject ToastService Toasts
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject MediaOptions MediaSettings
+@inject LiveKitTokenService LiveKitTokens
+@inject IConfiguration Configuration
+
+<PageTitle>@(_joined && _room is not null ? $"{_room.Name} · Onda" : "Entrar na sala · Onda")</PageTitle>
+
+@if (_isLoading)
+{
+    <div class="room-loading-page">
+        <div class="room-loading-mark">
+            <Brand Light="true" />
+            <span class="room-loading-wave"><i></i><i></i><i></i><i></i><i></i></span>
+            <p>Preparando a sua onda...</p>
+        </div>
+    </div>
+}
+else if (_notFound || _roomInfo is null)
+{
+    <div class="room-fallback-page">
+        <header class="fallback-header">
+            <Brand Light="true" />
+            <a class="fallback-home-link" href="/"><Icon Name="arrow-left" Size="15" /> Início</a>
+        </header>
+        <main class="fallback-main">
+            <span class="fallback-glyph"><Icon Name="wave" Size="34" /></span>
+            <p class="eyebrow">ONDA PERDIDA</p>
+            <h1>Essa sala não existe mais.</h1>
+            <p>O link pode estar incompleto ou a sala já foi encerrada. Você ainda pode abrir uma nova conversa.</p>
+            <div class="fallback-actions">
+                <a class="button button-accent" href="/"><Icon Name="plus" Size="17" /> Criar uma sala</a>
+                <a class="button fallback-ghost-button" href="/">Voltar ao início</a>
+            </div>
+        </main>
+    </div>
+}
+else if (!_joined)
+{
+    <div class="gate-page">
+        <div class="gate-aura gate-aura-one" aria-hidden="true"></div>
+        <div class="gate-aura gate-aura-two" aria-hidden="true"></div>
+        <div class="gate-lines" aria-hidden="true"></div>
+
+        <header class="gate-header">
+            <Brand Light="true" />
+            <a class="gate-back" href="/"><Icon Name="arrow-left" Size="15" /> <span>Voltar ao início</span></a>
+        </header>
+
+        <main class="gate-main">
+            <section class="gate-intro">
+                <p class="eyebrow gate-eyebrow"><span class="live-dot"></span> Uma conversa está esperando</p>
+                <h1>@_roomInfo.Name</h1>
+                <p class="gate-description">
+                    @if (_roomInfo.HasPassword)
+                    {
+                        <text>Uma porta, algumas vozes e um espaço só de vocês. Digite a senha para atravessar.</text>
+                    }
+                    else
+                    {
+                        <text>O link te trouxe até aqui. Entre, dê um oi e fique à vontade.</text>
+                    }
+                </p>
+
+                <div class="gate-room-meta">
+                    <span class="gate-meta-item">
+                        <span class="gate-meta-icon"><Icon Name="users" Size="16" /></span>
+                        <span><strong>@_roomInfo.ParticipantCount de @_roomInfo.MaxParticipants</strong><small>pessoas na sala</small></span>
+                    </span>
+                    <span class="gate-meta-item">
+                        <span class="gate-meta-icon"><Icon Name="@(_roomInfo.HasPassword ? "lock" : "globe")" Size="16" /></span>
+                        <span><strong>@(_roomInfo.HasPassword ? "Sala protegida" : "Sala aberta")</strong><small>@(_roomInfo.HasPassword ? "senha necessária" : "acesso pelo link")</small></span>
+                    </span>
+                </div>
+
+                <div class="gate-wave" aria-hidden="true">
+                    <span class="gate-wave-ring"></span>
+                    <span class="gate-wave-ring gate-wave-ring-two"></span>
+                    <span class="gate-wave-core"><Icon Name="mic" Size="25" /></span>
+                </div>
+            </section>
+
+            <section class="gate-card">
+                @if (_roomInfo.IsFull)
+                {
+                    <span class="gate-card-icon gate-card-icon-warn"><Icon Name="users" Size="25" /></span>
+                    <p class="eyebrow">SALA COMPLETA</p>
+                    <h2>Oito vozes já estão aqui.</h2>
+                    <p class="gate-card-copy">Esta sala está no limite de pessoas. Assim que alguém sair, um lugar abre — tente atualizar em instantes.</p>
+                    <button type="button" class="button button-accent gate-submit" @onclick="RefreshGateAsync">
+                        <Icon Name="wave" Size="17" /> Atualizar sala
+                    </button>
+                }
+                else if (_roomInfo.RequiresPassword)
+                {
+                    <span class="gate-card-icon"><Icon Name="lock" Size="25" /></span>
+                    <p class="eyebrow">ENTRADA PROTEGIDA</p>
+                    <h2>Qual é a senha?</h2>
+                    <p class="gate-card-copy">Quem criou esta sala pediu uma senha. Digite-a para entrar na conversa.</p>
+
+                    <form class="gate-form" @onsubmit="JoinFromGateAsync" @onsubmit:preventDefault="true">
+                        <label class="field gate-field">
+                            <span class="field-label">Senha da sala</span>
+                            <span class="password-input">
+                                <input type="@(_showGatePassword ? "text" : "password")"
+                                       class="text-input gate-password"
+                                       @bind="_gatePassword"
+                                       placeholder="Digite a senha"
+                                       autocomplete="current-password"
+                                       autofocus />
+                                <button type="button" aria-label="@(_showGatePassword ? "Ocultar senha" : "Mostrar senha")" @onclick="() => _showGatePassword = !_showGatePassword">
+                                    <Icon Name="@(_showGatePassword ? "eye-off" : "eye")" Size="17" />
+                                </button>
+                            </span>
+                        </label>
+
+                        @if (!string.IsNullOrWhiteSpace(_gateError))
+                        {
+                            <p class="gate-error" role="alert"><Icon Name="alert" Size="15" /> @_gateError</p>
+                        }
+
+                        <button type="submit" class="button button-accent gate-submit" disabled="@_joining">
+                            @if (_joining)
+                            {
+                                <span class="button-spinner button-spinner-dark" aria-hidden="true"></span>
+                                <span>Entrando...</span>
+                            }
+                            else
+                            {
+                                <span>Entrar na sala</span>
+                                <Icon Name="arrow-right" Size="17" />
+                            }
+                        </button>
+                    </form>
+                }
+                else
+                {
+                    <span class="gate-card-icon"><Icon Name="wave" Size="25" /></span>
+                    <p class="eyebrow">TUDO PRONTO</p>
+                    <h2>A sala está aberta.</h2>
+                    <p class="gate-card-copy">Entre e junte-se à conversa. Seu microfone será ativado com a sua permissão.</p>
+                    @if (!string.IsNullOrWhiteSpace(_gateError))
+                    {
+                        <p class="gate-error" role="alert"><Icon Name="alert" Size="15" /> @_gateError</p>
+                    }
+                    <button type="button" class="button button-accent gate-submit" @onclick="JoinWithoutPasswordAsync" disabled="@_joining">
+                        @if (_joining)
+                        {
+                            <span class="button-spinner button-spinner-dark" aria-hidden="true"></span>
+                            <span>Entrando...</span>
+                        }
+                        else
+                        {
+                            <span>Entrar na sala</span>
+                            <Icon Name="arrow-right" Size="17" />
+                        }
+                    </button>
+                }
+
+                <div class="gate-identity">
+                    <span>Entrando como</span>
+                    <button type="button" @onclick="OpenNameDialog" title="Alterar seu nome">
+                        <Avatar Name="@Guest.Name" Tone="@Guest.AvatarTone" Size="27" />
+                        <strong>@Guest.Name</strong>
+                        <Icon Name="pencil" Size="13" />
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <footer class="gate-footer">
+            <span><Icon Name="shield" Size="14" /> Sua voz e sua câmera só são compartilhadas dentro da sala.</span>
+            <span>Onda · conversas que fluem</span>
+        </footer>
+    </div>
+}
+else
+{
+    <div class="room-app">
+        <header class="room-header">
+            <div class="room-header-left">
+                <Brand Light="true" />
+                <span class="room-header-divider" aria-hidden="true"></span>
+                <div class="room-title-block">
+                    <div class="room-title-line">
+                        <h1>@_room!.Name</h1>
+                        <span class="room-access-badge">
+                            <Icon Name="@(_room.HasPassword ? "lock" : "globe")" Size="11" />
+                            @(_room.HasPassword ? "protegida" : "aberta")
+                        </span>
+                    </div>
+                    <p>@PeopleCountLabel(_room.Participants.Count) na sala · por @_room.OwnerName</p>
+                </div>
+            </div>
+
+            <div class="room-header-actions">
+                <span class="room-live-badge"><span class="live-dot"></span> ao vivo</span>
+                <button type="button" class="room-header-button" @onclick="OpenQualityDialog"
+                        aria-label="Ajustes de qualidade da transmissão"
+                        title="@($"Qualidade da transmissão: {_screenQuality.Summary}")">
+                    <Icon Name="sliders" Size="16" />
+                    <span class="header-button-label">Qualidade</span>
+                </button>
+                <button type="button" class="room-header-button" @onclick="CopyRoomLinkAsync" aria-label="Copiar link da sala" title="Copiar link da sala">
+                    <Icon Name="link" Size="16" />
+                    <span class="header-button-label">Copiar link</span>
+                </button>
+                <button type="button" class="room-leave-button" @onclick="LeaveRoomAsync" disabled="@_leaveBusy" aria-label="Sair da sala" title="Sair da sala">
+                    <Icon Name="phone-off" Size="16" />
+                    <span class="header-button-label">Sair</span>
+                </button>
+            </div>
+        </header>
+
+        <main class="room-main">
+            <section class="stage-shell" aria-label="Palco da sala">
+                @if (!string.IsNullOrWhiteSpace(_jsError))
+                {
+                    <div class="stage-banner stage-banner-error">
+                        <Icon Name="alert" Size="17" />
+                        <span>@_jsError O chat e a lista de pessoas continuam funcionando.</span>
+                    </div>
+                }
+                else if (_audioBlocked)
+                {
+                    <div class="stage-banner">
+                        <Icon Name="volume-off" Size="17" />
+                        <span>O navegador bloqueou o áudio de quem está na sala.</span>
+                        <button type="button" @onclick="ResumeAudioAsync">Ativar áudio</button>
+                    </div>
+                }
+
+                <div class="stage-area">
+                    @if (Shares.Count > 0)
+                    {
+                        <div class="stage-toolbar">
+                            <div class="stage-toolbar-copy">
+                                <span class="stage-label"><span class="live-dot"></span> No palco</span>
+                                <span class="stage-subtitle">
+                                    @if (Shares.Count == 1)
+                                    {
+                                        <text>@(Shares[0].ScreenOn ? "Uma tela em destaque." : "Uma câmera em destaque.")</text>
+                                    }
+                                    else
+                                    {
+                                        <text>@Shares.Count transmissões ao vivo. Clique para ampliar.</text>
+                                    }
+                                </span>
+                            </div>
+                            @if (ShowSpotlight)
+                            {
+                                <button type="button" class="stage-grid-button" @onclick="ClearFocus">
+                                    <Icon Name="grid" Size="14" /> Ver grade
+                                </button>
+                            }
+                        </div>
+
+                        @if (ShowSpotlight && FocusedShare is not null)
+                        {
+                            <div class="spotlight-layout">
+                                <div class="spotlight-feature" @key="FocusedShare.Id">
+                                    <RoomMediaTile Participant="FocusedShare"
+                                                    IsSelf="@(FocusedShare.Id == Guest.Id)"
+                                                    IsFeatured="true"
+                                                    OnFocus="FocusShare" />
+                                </div>
+                                <div class="focus-rail" aria-label="Outras transmissões">
+                                    @foreach (var share in OtherShares)
+                                    {
+                                        <div class="focus-rail-item" @key="share.Id">
+                                            <RoomMediaTile Participant="share"
+                                                            IsSelf="@(share.Id == Guest.Id)"
+                                                            IsThumbnail="true"
+                                                            OnFocus="FocusShare" />
+                                        </div>
+                                    }
+                                    <span class="focus-rail-hint">Clique para trocar o foco</span>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="media-grid media-grid-count-@Math.Min(Shares.Count, 4)">
+                                @foreach (var share in Shares)
+                                {
+                                    <div class="media-grid-item" @key="share.Id">
+                                        <RoomMediaTile Participant="share"
+                                                        IsSelf="@(share.Id == Guest.Id)"
+                                                        CanFocus="@(Shares.Count > 1)"
+                                                        OnFocus="FocusShare" />
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="people-view">
+                            <div class="stage-toolbar people-toolbar">
+                                <div class="stage-toolbar-copy">
+                                    <span class="stage-label"><span class="live-dot"></span> Conversa ao vivo</span>
+                                    <span class="stage-subtitle">@QuietStageSubtitle</span>
+                                </div>
+                                <button type="button" class="stage-grid-button" @onclick="CopyRoomLinkAsync">
+                                    <Icon Name="user-plus" Size="14" /> Convidar
+                                </button>
+                            </div>
+
+                            <div class="people-stage people-count-@Math.Min(_room.Participants.Count, 4)">
+                                @foreach (var person in _room.Participants)
+                                {
+                                    var isSelf = person.Id == Guest.Id;
+                                    <article class="person-card @(person.Speaking ? "is-speaking" : null) @(isSelf ? "is-self" : null)" @key="person.Id">
+                                        <span class="person-wave-bg" aria-hidden="true"></span>
+                                        <div class="person-avatar">
+                                            <Avatar Name="@person.Name" Tone="@person.ColorIndex" Size="96" Speaking="@person.Speaking" />
+                                            @if (person.Speaking)
+                                            {
+                                                <span class="person-speaking-ring" aria-hidden="true"></span>
+                                            }
+                                        </div>
+                                        <div class="person-copy">
+                                            <h2>
+                                                <span>@person.Name</span>
+                                                @if (isSelf)
+                                                {
+                                                    <span class="person-you">você</span>
+                                                }
+                                                @if (person.IsOwner)
+                                                {
+                                                    <span class="person-host" title="Criou esta sala"><Icon Name="crown" Size="12" /></span>
+                                                }
+                                            </h2>
+                                            <p class="person-status @(person.Speaking ? "is-talking" : null)">
+                                                <Icon Name="@(person.MicOn ? "mic" : "mic-off")" Size="13" />
+                                                @(person.Speaking ? "Falando agora" : person.MicOn ? "Microfone ligado" : "Silenciado")
+                                            </p>
+                                        </div>
+                                        @if (person.Speaking)
+                                        {
+                                            <span class="person-live-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+                                        }
+                                    </article>
+                                }
+
+                                @if (_room.Participants.Count < 3)
+                                {
+                                    <article class="invite-card">
+                                        <span class="invite-orbit" aria-hidden="true"><span></span><Icon Name="plus" Size="18" /></span>
+                                        <div>
+                                            <h2>A onda fica melhor <br />com companhia.</h2>
+                                            <p>Compartilhe o link e traga mais alguém para a conversa.</p>
+                                        </div>
+                                        <button type="button" class="invite-copy" @onclick="CopyRoomLinkAsync">
+                                            <Icon Name="link" Size="15" />
+                                            <span>Copiar link da sala</span>
+                                        </button>
+                                    </article>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div class="dock">
+                    <div class="dock-status" title="Você está na sala">
+                        <span class="dock-signal"><i></i><i></i><i></i></span>
+                        <span>@(_jsReady ? "No ar" : "Conectando")</span>
+                    </div>
+
+                    <div class="dock-controls">
+                        <button type="button"
+                                class="dock-control @(_localMicOn ? "is-on" : "is-off")"
+                                @onclick="ToggleMicrophoneAsync"
+                                disabled="@(!_jsReady || _actionPending is not null)"
+                                aria-pressed="@(_localMicOn ? "true" : "false")"
+                                aria-label="@(_localMicOn ? "Silenciar microfone" : _hasMic ? "Ativar microfone" : "Permitir microfone")"
+                                title="@(_localMicOn ? "Silenciar microfone" : _hasMic ? "Ativar microfone" : "Permitir microfone")">
+                            <span class="dock-control-icon">
+                                @if (_actionPending == "mic")
+                                {
+                                    <span class="dock-spinner" aria-hidden="true"></span>
+                                }
+                                else
+                                {
+                                    <Icon Name="@(_localMicOn ? "mic" : "mic-off")" Size="19" />
+                                }
+                            </span>
+                            <span class="dock-control-label">@(_localMicOn ? "Mic" : "Mudo")</span>
+                        </button>
+
+                        <button type="button"
+                                class="dock-control @(_localCameraOn ? "is-on" : "is-off")"
+                                @onclick="ToggleCameraAsync"
+                                disabled="@(!_jsReady || _actionPending is not null)"
+                                aria-pressed="@(_localCameraOn ? "true" : "false")"
+                                aria-label="@(_localCameraOn ? "Desligar câmera" : "Ligar câmera")"
+                                title="@(_localCameraOn ? "Desligar câmera" : "Ligar câmera")">
+                            <span class="dock-control-icon">
+                                @if (_actionPending == "camera")
+                                {
+                                    <span class="dock-spinner" aria-hidden="true"></span>
+                                }
+                                else
+                                {
+                                    <Icon Name="@(_localCameraOn ? "camera" : "camera-off")" Size="19" />
+                                }
+                            </span>
+                            <span class="dock-control-label">Câmera</span>
+                        </button>
+
+                        <button type="button"
+                                class="dock-control dock-screen-control @(_localScreenOn ? "is-active" : "is-off")"
+                                @onclick="ToggleScreenAsync"
+                                disabled="@(!_jsReady || _actionPending is not null)"
+                                aria-pressed="@(_localScreenOn ? "true" : "false")"
+                                aria-label="@(_localScreenOn ? "Parar compartilhamento de tela" : "Compartilhar tela")"
+                                title="@(_localScreenOn ? "Parar compartilhamento de tela" : "Compartilhar tela")">
+                            <span class="dock-control-icon">
+                                @if (_actionPending == "screen")
+                                {
+                                    <span class="dock-spinner" aria-hidden="true"></span>
+                                }
+                                else
+                                {
+                                    <Icon Name="@(_localScreenOn ? "screen-off" : "screen")" Size="19" />
+                                }
+                            </span>
+                            <span class="dock-control-label">@(_localScreenOn ? "Parar" : "Tela")</span>
+                        </button>
+
+                        <span class="dock-divider" aria-hidden="true"></span>
+
+                        <button type="button"
+                                class="dock-control dock-chat-control @(_showChat ? "is-active-soft" : null)"
+                                @onclick="OpenChat"
+                                aria-label="Abrir chat"
+                                title="Abrir chat">
+                            <span class="dock-control-icon">
+                                <Icon Name="chat" Size="19" />
+                                @if (_unreadChat > 0)
+                                {
+                                    <span class="dock-badge">@(_unreadChat > 9 ? "9+" : _unreadChat)</span>
+                                }
+                            </span>
+                            <span class="dock-control-label">Chat</span>
+                        </button>
+
+                        <button type="button"
+                                class="dock-control dock-people-control"
+                                @onclick="OpenPeople"
+                                aria-label="Ver pessoas"
+                                title="Ver pessoas">
+                            <span class="dock-control-icon"><Icon Name="users" Size="19" /></span>
+                            <span class="dock-control-label">Pessoas</span>
+                        </button>
+                    </div>
+
+                    <button type="button" class="dock-leave" @onclick="LeaveRoomAsync" disabled="@_leaveBusy" title="Sair da sala" aria-label="Sair da sala">
+                        <Icon Name="phone-off" Size="20" />
+                        <span>Sair</span>
+                    </button>
+                </div>
+            </section>
+
+            <button type="button"
+                    class="panel-scrim @(_panelOpen ? "is-visible" : null)"
+                    aria-label="Fechar painel"
+                    @onclick="ClosePanel"></button>
+
+            <aside class="room-panel @(_panelOpen ? "is-open" : null)" aria-label="Pessoas e chat">
+                <div class="panel-tabs" role="tablist" aria-label="Painel da sala">
+                    <button type="button"
+                            role="tab"
+                            class="@(!_showChat ? "is-active" : null)"
+                            aria-selected="@(!_showChat ? "true" : "false")"
+                            @onclick="OpenPeople">
+                        Pessoas
+                        <span class="tab-count">@_room.Participants.Count</span>
+                    </button>
+                    <button type="button"
+                            role="tab"
+                            class="@(_showChat ? "is-active" : null)"
+                            aria-selected="@(_showChat ? "true" : "false")"
+                            @onclick="OpenChat">
+                        Chat
+                        @if (_unreadChat > 0)
+                        {
+                            <span class="tab-count tab-unread">@_unreadChat</span>
+                        }
+                    </button>
+                    <button type="button" class="panel-close" aria-label="Fechar painel" @onclick="ClosePanel">
+                        <Icon Name="x" Size="17" />
+                    </button>
+                </div>
+
+                @if (_showChat)
+                {
+                    <div class="chat-panel" role="tabpanel">
+                        <div class="chat-scroll" @ref="_chatMessagesRef">
+                            <div class="chat-log" role="log" aria-live="polite">
+                                @foreach (var message in _messages)
+                                {
+                                    if (message.IsSystem)
+                                    {
+                                        <div class="chat-system" @key="message.Id">
+                                            <span>@message.Text</span>
+                                            <time>@FormatTime(message.SentAt)</time>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        var isMine = message.SenderId == Guest.Id;
+                                        var sender = _room.Participants.FirstOrDefault(p => p.Id == message.SenderId);
+                                        <div class="chat-message @(isMine ? "is-mine" : null)" @key="message.Id">
+                                            @if (!isMine)
+                                            {
+                                                <Avatar Name="@message.SenderName" Tone="@(sender?.ColorIndex ?? 0)" Size="28" />
+                                            }
+                                            <div class="chat-message-copy">
+                                                <div class="chat-message-meta">
+                                                    <strong>@(isMine ? "Você" : message.SenderName)</strong>
+                                                    <time>@FormatTime(message.SentAt)</time>
+                                                </div>
+                                                <p>@message.Text</p>
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                            </div>
+
+                            @if (!HasUserMessages)
+                            {
+                                <div class="chat-empty chat-welcome">
+                                    <span><Icon Name="chat" Size="22" /></span>
+                                    <h3>Comece a conversa.</h3>
+                                    <p>Um oi abre portas. Escreva a primeira mensagem e deixe a sala mais viva.</p>
+                                </div>
+                            }
+                        </div>
+
+                        <form class="chat-composer" @onsubmit="SendChatAsync" @onsubmit:preventDefault="true">
+                            <label class="visually-hidden" for="chat-input">Mensagem para a sala</label>
+                            <textarea id="chat-input"
+                                      class="chat-input"
+                                      data-chat-input="true"
+                                      rows="1"
+                                      maxlength="1000"
+                                      placeholder="Escreva uma mensagem..."
+                                      @bind="_chatDraft"
+                                      @bind:event="oninput"></textarea>
+                            <button type="submit"
+                                    class="chat-send"
+                                    disabled="@(!CanSendChat || _chatSending)"
+                                    aria-label="Enviar mensagem">
+                                <Icon Name="send" Size="17" />
+                            </button>
+                        </form>
+                        @if (!string.IsNullOrWhiteSpace(_chatError))
+                        {
+                            <p class="chat-error" role="alert">@_chatError</p>
+                        }
+                        else
+                        {
+                            <p class="chat-hint">Enter envia · Shift + Enter quebra linha</p>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="people-panel" role="tabpanel">
+                        <div class="people-panel-heading">
+                            <span>@PeopleCountLabel(_room.Participants.Count)</span>
+                            <span class="people-live"><span class="live-dot"></span> na sala</span>
+                        </div>
+
+                        <div class="people-list">
+                            @foreach (var person in _room.Participants)
+                            {
+                                var isSelf = person.Id == Guest.Id;
+                                <div class="people-row @(person.Speaking ? "is-speaking" : null)" @key="person.Id">
+                                    <div class="people-row-main">
+                                        <div class="people-avatar-wrap">
+                                            <Avatar Name="@person.Name" Tone="@person.ColorIndex" Size="39" Speaking="@person.Speaking" />
+                                            @if (person.Speaking)
+                                            {
+                                                <span class="people-speaking-dot" aria-hidden="true"></span>
+                                            }
+                                        </div>
+
+                                        <div class="people-copy">
+                                            <span class="people-name">
+                                                @person.Name
+                                                @if (isSelf)
+                                                {
+                                                    <span class="people-you">você</span>
+                                                }
+                                                @if (person.IsOwner)
+                                                {
+                                                    <span class="people-host" title="Criou esta sala"><Icon Name="crown" Size="11" /></span>
+                                                }
+                                            </span>
+                                            <span class="people-status @(person.Speaking ? "is-talking" : null)">
+                                                @StatusLabel(person)
+                                            </span>
+                                        </div>
+
+                                        @if (isSelf)
+                                        {
+                                            <button type="button" class="people-action" @onclick="OpenNameDialog" title="Alterar seu nome" aria-label="Alterar seu nome">
+                                                <Icon Name="pencil" Size="15" />
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button"
+                                                    class="people-action @(_volumePeerId == person.Id ? "is-open" : null)"
+                                                    @onclick="() => ToggleVolumePanel(person.Id)"
+                                                    title="Ajustar volume"
+                                                    aria-label="@($"Ajustar volume de {person.Name}")"
+                                                    aria-expanded="@(_volumePeerId == person.Id ? "true" : "false")">
+                                                <Icon Name="@(VolumeIconFor(person.Id))" Size="16" />
+                                            </button>
+                                        }
+                                    </div>
+
+                                    @if (!isSelf && _volumePeerId == person.Id)
+                                    {
+                                        <div class="volume-panel">
+                                            <div class="volume-control">
+                                                <div class="volume-control-head">
+                                                    <span><Icon Name="volume" Size="14" /> Voz</span>
+                                                    <strong>@GetVolume(VoiceChannel, person.Id)%</strong>
+                                                </div>
+                                                <div class="volume-slider-row">
+                                                    <button type="button"
+                                                            class="volume-mute"
+                                                            @onclick="() => ToggleMute(person.Id, VoiceChannel)"
+                                                            aria-label="@(GetVolume(VoiceChannel, person.Id) == 0 ? "Reativar voz" : "Silenciar voz")">
+                                                        <Icon Name="@(GetVolume(VoiceChannel, person.Id) == 0 ? "volume-off" : "volume-low")" Size="15" />
+                                                    </button>
+                                                    <input type="range"
+                                                           min="0"
+                                                           max="100"
+                                                           step="1"
+                                                           value="@GetVolume(VoiceChannel, person.Id)"
+                                                           style="--volume-fill: @(GetVolume(VoiceChannel, person.Id))%"
+                                                           @oninput="e => ChangeVolume(person.Id, VoiceChannel, e)"
+                                                           aria-label="@($"Volume da voz de {person.Name}")" />
+                                                </div>
+                                            </div>
+
+                                            @if (person.ScreenOn && person.ScreenWithAudio)
+                                            {
+                                                <div class="volume-control">
+                                                    <div class="volume-control-head">
+                                                        <span><Icon Name="screen" Size="14" /> Áudio da tela</span>
+                                                        <strong>@GetVolume(ScreenChannel, person.Id)%</strong>
+                                                    </div>
+                                                    <div class="volume-slider-row">
+                                                        <button type="button"
+                                                                class="volume-mute"
+                                                                @onclick="() => ToggleMute(person.Id, ScreenChannel)"
+                                                                aria-label="@(GetVolume(ScreenChannel, person.Id) == 0 ? "Reativar áudio da tela" : "Silenciar áudio da tela")">
+                                                            <Icon Name="@(GetVolume(ScreenChannel, person.Id) == 0 ? "volume-off" : "volume-low")" Size="15" />
+                                                        </button>
+                                                        <input type="range"
+                                                               min="0"
+                                                               max="100"
+                                                               step="1"
+                                                               value="@GetVolume(ScreenChannel, person.Id)"
+                                                               style="--volume-fill: @(GetVolume(ScreenChannel, person.Id))%"
+                                                               @oninput="e => ChangeVolume(person.Id, ScreenChannel, e)"
+                                                               aria-label="@($"Volume do áudio da tela de {person.Name}")" />
+                                                    </div>
+                                                    <p class="volume-note">Ajuste só o que você escuta.</p>
+                                                </div>
+                                            }
+                                            else if (person.ScreenOn)
+                                            {
+                                                <p class="volume-note">Esta transmissão não tem áudio.</p>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+
+                        <div class="panel-room-card">
+                            <div>
+                                <span class="panel-room-label"><Icon Name="link" Size="13" /> Código da sala</span>
+                                <strong>@_room.Id</strong>
+                            </div>
+                            <button type="button" @onclick="CopyRoomLinkAsync" title="Copiar link da sala">
+                                <Icon Name="copy" Size="15" /> Copiar link
+                            </button>
+                        </div>
+                    </div>
+                }
+            </aside>
+        </main>
+
+        @if (_sessionExpired)
+        {
+            <div class="session-expired-layer">
+                <div class="session-expired-card">
+                    <span class="gate-card-icon"><Icon Name="wifi" Size="24" /></span>
+                    <p class="eyebrow">CONEXÃO ENCERRADA</p>
+                    <h2>Sua presença nesta sala expirou.</h2>
+                    <p>Isso pode acontecer quando a aba fica muito tempo em segundo plano. Recarregue para voltar à conversa.</p>
+                    <button type="button" class="button button-accent" @onclick="ReloadPageAsync">
+                        <Icon Name="wave" Size="17" /> Entrar novamente
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+<Modal IsOpen="_showNameDialog"
+       Title="Como você quer aparecer?"
+       Eyebrow="SEU NOME"
+       OnClose="CloseNameDialog">
+    <form class="name-form" @onsubmit="SaveNameAsync" @onsubmit:preventDefault="true">
+        <div class="name-preview">
+            <Avatar Name="@(_nameDraft.Length > 0 ? _nameDraft : Guest.Name)" Tone="@Guest.AvatarTone" Size="56" />
+            <div>
+                <strong>@(_nameDraft.Length > 0 ? _nameDraft : Guest.Name)</strong>
+                <span>É assim que os outros vão te ver.</span>
+            </div>
+        </div>
+
+        <label class="field">
+            <span class="field-label">Nome de exibição</span>
+            <input type="text"
+                   class="text-input"
+                   @bind="_nameDraft"
+                   @bind:event="oninput"
+                   maxlength="32"
+                   autocomplete="nickname"
+                   aria-label="Nome de exibição" />
+            <span class="field-hint">Seu nome pode ser trocado quando quiser.</span>
+        </label>
+
+        @if (!string.IsNullOrWhiteSpace(_nameError))
+        {
+            <p class="form-error" role="alert"><Icon Name="alert" Size="15" /> @_nameError</p>
+        }
+
+        <div class="modal-actions modal-actions-end">
+            <div class="modal-buttons">
+                <button type="button" class="button button-ghost" @onclick="CloseNameDialog">Cancelar</button>
+                <button type="submit" class="button button-primary">
+                    Salvar nome <Icon Name="check" Size="17" />
+                </button>
+            </div>
+        </div>
+    </form>
+</Modal>
+
+<Modal IsOpen="_showQualityDialog"
+       Title="Qualidade da transmissão"
+       Eyebrow="VÍDEO & TELA"
+       Wide="true"
+       OnClose="CloseQualityDialog">
+    <div class="quality-form">
+        <div class="quality-mode">
+            <span class="quality-mode-icon"><Icon Name="@(_isSfu ? "server" : "monitor")" Size="19" /></span>
+            <div class="quality-mode-copy">
+                <strong>@(_isSfu ? "SFU · LiveKit" : "P2P · conexão direta")</strong>
+                <span>@(_isSfu ? "Mídia roteada pelo servidor, pronta para salas maiores." : "Cada participante envia para os demais. Ideal para salas menores.")</span>
+            </div>
+            <span class="quality-capacity">@Rooms.MaxParticipantsPerRoom pessoas</span>
+        </div>
+
+        <div class="quality-presets" role="group" aria-label="Presets de qualidade">
+            <button type="button"
+                    class="quality-preset @(_qualityDraft.Preset == ScreenShareQuality.PresetFluid ? "is-selected" : null)"
+                    aria-pressed="@(_qualityDraft.Preset == ScreenShareQuality.PresetFluid ? "true" : "false")"
+                    @onclick="() => ApplyQualityPreset(ScreenShareQuality.PresetFluid)">
+                <span class="quality-preset-name">Fluida</span>
+                <span>720p · 60 fps</span>
+                <small>movimento</small>
+            </button>
+            <button type="button"
+                    class="quality-preset @(_qualityDraft.Preset == ScreenShareQuality.PresetBalanced ? "is-selected" : null)"
+                    aria-pressed="@(_qualityDraft.Preset == ScreenShareQuality.PresetBalanced ? "true" : "false")"
+                    @onclick="() => ApplyQualityPreset(ScreenShareQuality.PresetBalanced)">
+                <span class="quality-preset-name">Equilibrada</span>
+                <span>1080p · 30 fps</span>
+                <small>recomendada</small>
+            </button>
+            <button type="button"
+                    class="quality-preset @(_qualityDraft.Preset == ScreenShareQuality.PresetSharp ? "is-selected" : null)"
+                    aria-pressed="@(_qualityDraft.Preset == ScreenShareQuality.PresetSharp ? "true" : "false")"
+                    @onclick="() => ApplyQualityPreset(ScreenShareQuality.PresetSharp)">
+                <span class="quality-preset-name">Nítida</span>
+                <span>1440p · 30 fps</span>
+                <small>texto e detalhe</small>
+            </button>
+            <button type="button"
+                    class="quality-preset @(_qualityDraft.Preset == ScreenShareQuality.PresetCustom ? "is-selected" : null)"
+                    aria-pressed="@(_qualityDraft.Preset == ScreenShareQuality.PresetCustom ? "true" : "false")"
+                    @onclick="MarkQualityCustom">
+                <span class="quality-preset-name">Personalizada</span>
+                <span>Ajuste fino</span>
+                <small>do seu jeito</small>
+            </button>
+        </div>
+
+        <div class="quality-grid">
+            <label class="field">
+                <span class="field-label">Resolução</span>
+                <select class="text-input" @bind="_qualityDraft.Height" @bind:after="MarkQualityCustom">
+                    <option value="720">720p · HD</option>
+                    <option value="1080">1080p · Full HD</option>
+                    <option value="1440">1440p · Quad HD</option>
+                </select>
+            </label>
+
+            <label class="field">
+                <span class="field-label">Taxa de quadros</span>
+                <select class="text-input" @bind="_qualityDraft.FrameRate" @bind:after="MarkQualityCustom">
+                    <option value="15">15 fps · econômica</option>
+                    <option value="24">24 fps · cinema</option>
+                    <option value="30">30 fps · equilibrada</option>
+                    <option value="60">60 fps · fluida</option>
+                </select>
+            </label>
+        </div>
+
+        <label class="field quality-bitrate">
+            <span class="quality-label-row">
+                <span class="field-label">Taxa de bits</span>
+                <strong>@((_qualityDraft.BitrateKbps / 1000d).ToString("0.#")) Mbps</strong>
+            </span>
+            <input type="range"
+                   min="1000"
+                   max="20000"
+                   step="500"
+                   value="@_qualityDraft.BitrateKbps"
+                   @oninput="OnQualityBitrateInput"
+                   aria-label="Taxa de bits do compartilhamento de tela" />
+            <span class="quality-scale"><span>1 Mbps</span><span>Mais nitidez</span><span>20 Mbps</span></span>
+        </label>
+
+        <div class="quality-grid">
+            <label class="field">
+                <span class="field-label">Codec preferido</span>
+                <select class="text-input" @bind="_qualityDraft.Codec" @bind:after="MarkQualityCustom">
+                    <option value="auto">Automático</option>
+                    <option value="vp8">VP8</option>
+                    <option value="vp9">VP9</option>
+                    <option value="h264">H.264</option>
+                    <option value="av1">AV1</option>
+                </select>
+            </label>
+
+            <label class="field">
+                <span class="field-label">Priorizar</span>
+                <select class="text-input" @bind="_qualityDraft.ContentMode" @bind:after="MarkQualityCustom">
+                    <option value="detail">Texto e nitidez</option>
+                    <option value="motion">Movimento e fluidez</option>
+                </select>
+            </label>
+        </div>
+
+        <p class="quality-note">
+            <Icon Name="alert" Size="15" />
+            <span>
+                Resolução, FPS e bitrate são aplicados ao próximo compartilhamento de tela.
+                @if (_isSfu)
+                {
+                    <text> O codec escolhido também vale para o próximo compartilhamento.</text>
+                }
+                else
+                {
+                    <text> No modo P2P, o codec é negociado ao entrar na sala; para trocá-lo, entre novamente após salvar.</text>
+                }
+                A disponibilidade depende do navegador e do servidor; pode haver fallback.
+            </span>
+        </p>
+
+        <div class="modal-actions quality-actions">
+            <button type="button" class="quality-reset" @onclick="ResetQualityDefaults">
+                Restaurar padrão
+            </button>
+            <div class="modal-buttons">
+                <button type="button" class="button button-ghost" @onclick="CloseQualityDialog">Cancelar</button>
+                <button type="button" class="button button-primary" @onclick="SaveQualityAsync">
+                    Salvar ajustes <Icon Name="check" Size="17" />
+                </button>
+            </div>
+        </div>
+    </div>
+</Modal>
+
+@code {
+    private const string VoiceChannel = "voice";
+    private const string ScreenChannel = "screen";
+
+    private readonly HashSet<string> _knownPeers = new(StringComparer.Ordinal);
+    private readonly List<RelaySignal> _pendingSignals = [];
+    private readonly object _pendingSignalsGate = new();
+    private readonly Dictionary<string, int> _voiceVolumes = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> _screenVolumes = new(StringComparer.Ordinal);
+
+    [Parameter]
+    public string Code { get; set; } = string.Empty;
+
+    private RoomInfoView? _roomInfo;
+    private RoomView? _room;
+    private ParticipantView? _self;
+    private bool _isLoading = true;
+    private bool _notFound;
+    private bool _joined;
+    private bool _joining;
+    private bool _leaveBusy;
+    private bool _disposed;
+    private bool _sessionExpired;
+
+    private string _gatePassword = string.Empty;
+    private string? _gateError;
+    private bool _showGatePassword;
+
+    private IJSObjectReference? _jsModule;
+    private DotNetObjectReference<Room>? _dotNetRef;
+    private bool _jsReady;
+    private bool _jsInitializing;
+    private string? _jsError;
+    private bool _audioBlocked;
+    private string? _actionPending;
+
+    private bool _localMicOn;
+    private bool _hasMic;
+    private bool _localCameraOn;
+    private bool _localScreenOn;
+
+    private string? _focusedPeerId;
+    private string? _volumePeerId;
+    private bool _panelOpen;
+    private bool _showChat;
+    private int _unreadChat;
+    private bool _scrollChatPending;
+    private ElementReference _chatMessagesRef;
+    private string _chatDraft = string.Empty;
+    private string? _chatError;
+    private bool _chatSending;
+    private string? _lastMessageId;
+    private IReadOnlyList<ChatMessageView> _messages = [];
+
+    private bool _showNameDialog;
+    private string _nameDraft = string.Empty;
+    private string? _nameError;
+
+    private bool _showQualityDialog;
+    private ScreenShareQuality _screenQuality = ScreenShareQuality.ForPreset(ScreenShareQuality.PresetBalanced);
+    private ScreenShareQuality _qualityDraft = ScreenShareQuality.ForPreset(ScreenShareQuality.PresetBalanced);
+    private bool _isSfu;
+    private bool _qualityLoaded;
+
+    private static readonly JsonSerializerOptions QualityJsonOptions = new(JsonSerializerDefaults.Web);
+
+    private IReadOnlyList<ParticipantView> Shares =>
+        _room?.Participants.Where(p => p.CameraOn || p.ScreenOn).ToArray() ?? [];
+
+    private ParticipantView? FocusedShare
+    {
+        get
+        {
+            var shares = Shares;
+            if (shares.Count == 0)
+            {
+                return null;
+            }
+
+            return shares.FirstOrDefault(p => p.Id == _focusedPeerId) ?? shares[0];
+        }
+    }
+
+    private IReadOnlyList<ParticipantView> OtherShares
+    {
+        get
+        {
+            var focused = FocusedShare;
+            return focused is null ? [] : Shares.Where(p => p.Id != focused.Id).ToArray();
+        }
+    }
+
+    private bool ShowSpotlight => _focusedPeerId is not null && Shares.Count > 1 && Shares.Any(p => p.Id == _focusedPeerId);
+
+    private bool CanSendChat => !string.IsNullOrWhiteSpace(_chatDraft);
+
+    private bool HasUserMessages => _messages.Any(message => !message.IsSystem);
+
+    private string QuietStageSubtitle =>
+        _room is null
+            ? string.Empty
+            : _room.Participants.Count == 1
+                ? "A sala está só sua por enquanto. Convide alguém."
+                : "A conversa está rolando. Quando alguém compartilhar, aparece aqui.";
+
+    private string RoomUrl
+    {
+        get
+        {
+            var publicUrl = Configuration["App:PublicUrl"];
+            var baseUri = string.IsNullOrWhiteSpace(publicUrl) ? Nav.BaseUri : publicUrl.TrimEnd('/');
+            return $"{baseUri.TrimEnd('/')}/sala/{_room?.Id ?? Code}";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Code = InputRules.NormalizeRoomCode(Code) ?? Code;
+        Rooms.RoomChanged += HandleRoomChanged;
+        Rooms.ChatChanged += HandleChatChanged;
+        Rooms.SignalReceived += HandleSignal;
+
+        _roomInfo = Rooms.GetRoomInfo(Code, Guest.Id);
+        if (_roomInfo is null)
+        {
+            _notFound = true;
+            _isLoading = false;
+            return;
+        }
+
+        if (!_roomInfo.RequiresPassword && !_roomInfo.IsFull)
+        {
+            var result = Rooms.JoinRoom(Code, Guest.Id, Guest.AvatarTone, Guest.Name, null);
+            if (result.Status == JoinRoomStatus.Success && result.Room is not null)
+            {
+                EnterRoom(result.Room);
+            }
+            else
+            {
+                _roomInfo = Rooms.GetRoomInfo(Code, Guest.Id) ?? _roomInfo;
+                _gateError = result.Error ?? "Não foi possível entrar na sala.";
+            }
+        }
+
+        _isLoading = false;
+        await Task.CompletedTask;
+    }
+
+    private void EnterRoom(RoomView room)
+    {
+        ApplyRoom(room, initial: true);
+        _messages = room.Messages;
+        _lastMessageId = _messages.Count > 0 ? _messages[^1].Id : null;
+        _joined = true;
+        _gatePassword = string.Empty;
+        _gateError = null;
+        _showGatePassword = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_disposed || !_joined)
+        {
+            if (_scrollChatPending)
+            {
+                await ScrollChatAsync();
+            }
+
+            return;
+        }
+
+        if (!_jsReady && !_jsInitializing && _jsError is null)
+        {
+            await InitializeInteropAsync();
+        }
+
+        if (_jsReady)
+        {
+            await ReconcilePeersAsync();
+            await SyncMediaElementsAsync();
+        }
+
+        if (_scrollChatPending)
+        {
+            await ScrollChatAsync();
+        }
+    }
+
+    private async Task InitializeInteropAsync()
+    {
+        _jsInitializing = true;
+        try
+        {
+            if (!_qualityLoaded)
+            {
+                _screenQuality = await LoadScreenQualityAsync();
+                _qualityDraft = _screenQuality.Clone();
+                _qualityLoaded = true;
+            }
+
+            var useLiveKit = MediaSettings.EffectiveProvider == MediaOptions.LiveKitProvider;
+            string? livekitUrl = null;
+            string? livekitToken = null;
+
+            if (useLiveKit)
+            {
+                try
+                {
+                    livekitUrl = MediaSettings.LiveKit.Url;
+                    livekitToken = LiveKitTokens.CreateRoomToken(Code, Guest.Id, Guest.Name);
+                    _isSfu = true;
+                }
+                catch (Exception)
+                {
+                    _isSfu = false;
+                    useLiveKit = false;
+                    Toasts.Show(
+                        "O servidor de mídia SFU não está disponível. A sala continuará no modo P2P.",
+                        ToastKind.Error,
+                        7000);
+                }
+            }
+            else
+            {
+                _isSfu = false;
+            }
+
+            var configuration = new
+            {
+                provider = useLiveKit ? "livekit" : "mesh",
+                livekitUrl,
+                livekitToken,
+                selfName = Guest.Name,
+                iceServers = MediaSettings.IceServers
+                    .Select(server => new
+                    {
+                        urls = server.Urls,
+                        username = server.Username,
+                        credential = server.Credential
+                    })
+                    .ToArray(),
+                quality = ToJsQuality(_screenQuality)
+            };
+
+            var moduleFile = useLiveKit ? "livekit-room.js" : "webrtc.js";
+            var modulePath = new Uri(new Uri(Nav.BaseUri), $"js/{moduleFile}").AbsolutePath;
+            _jsModule = await JS.InvokeAsync<IJSObjectReference>("import", modulePath);
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await _jsModule.InvokeVoidAsync("initialize", _dotNetRef, Code, Guest.Id, configuration);
+            _jsReady = true;
+            await PushInitialVolumesAsync();
+            await FlushPendingSignalsAsync();
+        }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException or JSDisconnectedException)
+        {
+            _jsError = "Não conseguimos iniciar o áudio e o vídeo neste navegador.";
+            Toasts.Show(_jsError, ToastKind.Error, 6500);
+        }
+        finally
+        {
+            _jsInitializing = false;
+        }
+    }
+
+    private async Task<ScreenShareQuality> LoadScreenQualityAsync()
+    {
+        try
+        {
+            var json = await JS.InvokeAsync<string>("onda.readScreenQuality");
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                var loaded = JsonSerializer.Deserialize<ScreenShareQuality>(json, QualityJsonOptions);
+                if (loaded is not null)
+                {
+                    return loaded.Normalize();
+                }
+            }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or JsonException)
+        {
+            // Preferences are optional.
+        }
+
+        return ScreenShareQuality.ForPreset(ScreenShareQuality.PresetBalanced);
+    }
+
+    private object ToJsQuality(ScreenShareQuality quality) => new
+    {
+        preset = quality.Preset,
+        height = quality.Height,
+        width = quality.Width,
+        frameRate = quality.FrameRate,
+        bitrateKbps = quality.BitrateKbps,
+        codec = quality.Codec,
+        contentMode = quality.ContentMode
+    };
+
+    private async Task ReconcilePeersAsync()
+    {
+        if (_jsModule is null || _room is null)
+        {
+            return;
+        }
+
+        if (_isSfu)
+        {
+            // LiveKit owns the SFU subscriptions; there is no peer-by-peer
+            // mesh to reconcile in this mode.
+            return;
+        }
+
+        var currentPeerIds = _room.Participants
+            .Where(p => p.Id != Guest.Id)
+            .Select(p => p.Id)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var departed = _knownPeers.Where(id => !currentPeerIds.Contains(id)).ToArray();
+        foreach (var peerId in departed)
+        {
+            _knownPeers.Remove(peerId);
+            _voiceVolumes.Remove(peerId);
+            _screenVolumes.Remove(peerId);
+            if (_volumePeerId == peerId)
+            {
+                _volumePeerId = null;
+            }
+
+            try
+            {
+                await _jsModule.InvokeVoidAsync("disconnectPeer", peerId);
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                // Connection may already be closed by the browser.
+            }
+        }
+
+        foreach (var peerId in currentPeerIds.Where(id => !_knownPeers.Contains(id)))
+        {
+            _knownPeers.Add(peerId);
+            _voiceVolumes.TryAdd(peerId, 80);
+            _screenVolumes.TryAdd(peerId, 80);
+            try
+            {
+                await _jsModule.InvokeVoidAsync("connectPeer", peerId);
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                _knownPeers.Remove(peerId);
+                Toasts.Show("Não foi possível iniciar a transmissão com uma pessoa da sala.", ToastKind.Error);
+            }
+        }
+    }
+
+    private async Task SyncMediaElementsAsync()
+    {
+        if (_jsModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _jsModule.InvokeVoidAsync("syncMediaElements");
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            // The page is probably navigating away.
+        }
+    }
+
+    private async Task FlushPendingSignalsAsync()
+    {
+        if (!_jsReady || _jsModule is null)
+        {
+            return;
+        }
+
+        RelaySignal[] pending;
+        lock (_pendingSignalsGate)
+        {
+            pending = _pendingSignals.ToArray();
+            _pendingSignals.Clear();
+        }
+
+        foreach (var signal in pending)
+        {
+            try
+            {
+                await _jsModule.InvokeVoidAsync("receiveSignal", signal.FromId, signal.Payload);
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                break;
+            }
+        }
+    }
+
+    private void HandleRoomChanged(string roomId)
+    {
+        if (_disposed || !string.Equals(roomId, Code, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _ = InvokeAsync(() =>
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            if (!_joined)
+            {
+                var info = Rooms.GetRoomInfo(Code, Guest.Id);
+                if (info is null)
+                {
+                    _notFound = true;
+                    _roomInfo = null;
+                }
+                else
+                {
+                    _roomInfo = info;
+                }
+
+                StateHasChanged();
+                return;
+            }
+
+            var snapshot = Rooms.GetSnapshot(Code);
+            if (snapshot is null)
+            {
+                _notFound = true;
+                _joined = false;
+                StateHasChanged();
+                return;
+            }
+
+            ApplyRoom(snapshot, initial: false);
+            StateHasChanged();
+        });
+    }
+
+    private void HandleSignal(RelaySignal signal)
+    {
+        if (_disposed ||
+            !string.Equals(signal.RoomId, Code, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(signal.ToId, Guest.Id, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (!_jsReady)
+        {
+            lock (_pendingSignalsGate)
+            {
+                if (_pendingSignals.Count < 128)
+                {
+                    _pendingSignals.Add(signal);
+                }
+            }
+
+            return;
+        }
+
+        _ = InvokeAsync(async () =>
+        {
+            if (_disposed || _jsModule is null)
+            {
+                return;
+            }
+
+            try
+            {
+                await _jsModule.InvokeVoidAsync("receiveSignal", signal.FromId, signal.Payload);
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                // A peer may have left while its final candidates were in flight.
+            }
+        });
+    }
+
+    private void ApplyRoom(RoomView room, bool initial)
+    {
+        _room = room;
+        _self = room.Participants.FirstOrDefault(p => p.Id == Guest.Id);
+
+        foreach (var participant in room.Participants)
+        {
+            _voiceVolumes.TryAdd(participant.Id, 80);
+            _screenVolumes.TryAdd(participant.Id, 80);
+        }
+
+        if (_focusedPeerId is not null &&
+            !room.Participants.Any(p => p.Id == _focusedPeerId && (p.CameraOn || p.ScreenOn)))
+        {
+            _focusedPeerId = null;
+        }
+
+        if (_volumePeerId is not null && room.Participants.All(p => p.Id != _volumePeerId))
+        {
+            _volumePeerId = null;
+        }
+
+        if (initial)
+        {
+            _unreadChat = 0;
+            return;
+        }
+
+        if (_self is null)
+        {
+            _sessionExpired = true;
+            return;
+        }
+    }
+
+    private void HandleChatChanged(string roomId)
+    {
+        if (_disposed || !_joined || !string.Equals(roomId, Code, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _ = InvokeAsync(() =>
+        {
+            if (_disposed || !_joined || _room is null)
+            {
+                return;
+            }
+
+            ApplyChatMessages(Rooms.GetChatMessages(Code));
+            StateHasChanged();
+        });
+    }
+
+    private void ApplyChatMessages(IReadOnlyList<ChatMessageView> messages)
+    {
+        var newMessages = new List<ChatMessageView>();
+        if (messages.Count > 0)
+        {
+            var previousIndex = string.IsNullOrEmpty(_lastMessageId)
+                ? -2
+                : FindMessageIndex(messages, _lastMessageId);
+
+            if (previousIndex >= 0)
+            {
+                newMessages.AddRange(messages.Skip(previousIndex + 1));
+            }
+            else if (previousIndex == -2)
+            {
+                newMessages.AddRange(messages);
+            }
+            else
+            {
+                newMessages.AddRange(messages);
+            }
+        }
+
+        _messages = messages;
+        _lastMessageId = messages.Count > 0 ? messages[^1].Id : null;
+
+        if (_room is null || _self is null)
+        {
+            return;
+        }
+
+        var unreadCandidates = newMessages
+            .Where(m => !m.IsSystem && m.SenderId != Guest.Id)
+            .Count();
+
+        if (unreadCandidates > 0)
+        {
+            if (_showChat)
+            {
+                _scrollChatPending = true;
+            }
+            else
+            {
+                _unreadChat += unreadCandidates;
+            }
+        }
+        else if (newMessages.Count > 0 && _showChat)
+        {
+            _scrollChatPending = true;
+        }
+    }
+
+    private static int FindMessageIndex(IReadOnlyList<ChatMessageView> messages, string messageId)
+    {
+        for (var i = 0; i < messages.Count; i++)
+        {
+            if (messages[i].Id == messageId)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    [JSInvokable]
+    public Task OnWebRtcSignal(string targetId, string payload)
+    {
+        if (!_disposed && _joined && !string.IsNullOrWhiteSpace(targetId) && targetId != Guest.Id)
+        {
+            Rooms.RelaySignal(Code, Guest.Id, targetId, payload);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnLocalMediaStateChanged(bool micOn, bool hasMic, bool cameraOn, bool screenOn, bool screenWithAudio)
+    {
+        if (_disposed)
+        {
+            return Task.CompletedTask;
+        }
+
+        _localMicOn = micOn;
+        _hasMic = hasMic;
+        _localCameraOn = cameraOn;
+        _localScreenOn = screenOn;
+
+        if (_joined)
+        {
+            Rooms.UpdateMediaState(Code, Guest.Id, micOn, cameraOn, screenOn, screenWithAudio);
+        }
+
+        _ = InvokeAsync(StateHasChanged);
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnSpeakingChanged(bool speaking)
+    {
+        if (!_disposed && _joined)
+        {
+            Rooms.UpdateSpeaking(Code, Guest.Id, speaking);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnAudioPlaybackBlocked(bool blocked)
+    {
+        if (_disposed)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (_audioBlocked != blocked)
+        {
+            _audioBlocked = blocked;
+            _ = InvokeAsync(StateHasChanged);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnMediaError(string context, string message)
+    {
+        if (_disposed)
+        {
+            return Task.CompletedTask;
+        }
+
+        Toasts.Show(string.IsNullOrWhiteSpace(message) ? "Não foi possível acessar esse dispositivo." : message, ToastKind.Error, 6500);
+        return Task.CompletedTask;
+    }
+
+    private async Task ToggleMicrophoneAsync()
+    {
+        if (_jsModule is null || _actionPending is not null)
+        {
+            return;
+        }
+
+        _actionPending = "mic";
+        try
+        {
+            await _jsModule.InvokeVoidAsync("toggleMicrophone");
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            Toasts.Show("Não foi possível alterar o microfone.", ToastKind.Error);
+        }
+        finally
+        {
+            _actionPending = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleCameraAsync()
+    {
+        if (_jsModule is null || _actionPending is not null)
+        {
+            return;
+        }
+
+        _actionPending = "camera";
+        try
+        {
+            await _jsModule.InvokeVoidAsync("toggleCamera");
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            Toasts.Show("Não foi possível alterar a câmera.", ToastKind.Error);
+        }
+        finally
+        {
+            _actionPending = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleScreenAsync()
+    {
+        if (_jsModule is null || _actionPending is not null)
+        {
+            return;
+        }
+
+        _actionPending = "screen";
+        try
+        {
+            await _jsModule.InvokeVoidAsync("toggleScreenShare");
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            Toasts.Show("Não foi possível compartilhar a tela.", ToastKind.Error);
+        }
+        finally
+        {
+            _actionPending = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ResumeAudioAsync()
+    {
+        if (_jsModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _jsModule.InvokeVoidAsync("resumeAudioPlayback");
+            _audioBlocked = false;
+            StateHasChanged();
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            Toasts.Show("Não foi possível ativar o áudio. Tente novamente.", ToastKind.Error);
+        }
+    }
+
+    private void FocusShare(string peerId)
+    {
+        if (Shares.Count <= 1)
+        {
+            return;
+        }
+
+        _focusedPeerId = _focusedPeerId == peerId ? null : peerId;
+    }
+
+    private void ClearFocus() => _focusedPeerId = null;
+
+    private void OpenChat()
+    {
+        _showChat = true;
+        _panelOpen = true;
+        _unreadChat = 0;
+        _scrollChatPending = true;
+    }
+
+    private void OpenPeople()
+    {
+        _showChat = false;
+        _panelOpen = true;
+    }
+
+    private void ClosePanel()
+    {
+        _panelOpen = false;
+        _showChat = false;
+    }
+
+    private void ToggleVolumePanel(string peerId)
+    {
+        _volumePeerId = _volumePeerId == peerId ? null : peerId;
+    }
+
+    private int GetVolume(string channel, string peerId)
+    {
+        var values = channel == ScreenChannel ? _screenVolumes : _voiceVolumes;
+        return values.TryGetValue(peerId, out var value) ? value : 80;
+    }
+
+    private string VolumeIconFor(string peerId)
+    {
+        if (GetVolume(VoiceChannel, peerId) == 0 && GetVolume(ScreenChannel, peerId) == 0)
+        {
+            return "volume-off";
+        }
+
+        return GetVolume(VoiceChannel, peerId) == 0 ? "volume-off" : "volume";
+    }
+
+    private void ChangeVolume(string peerId, string channel, ChangeEventArgs args)
+    {
+        if (!int.TryParse(args.Value?.ToString(), out var value))
+        {
+            return;
+        }
+
+        SetVolume(peerId, channel, Math.Clamp(value, 0, 100));
+    }
+
+    private void ToggleMute(string peerId, string channel)
+    {
+        var current = GetVolume(channel, peerId);
+        SetVolume(peerId, channel, current == 0 ? 80 : 0);
+    }
+
+    private void SetVolume(string peerId, string channel, int value)
+    {
+        var values = channel == ScreenChannel ? _screenVolumes : _voiceVolumes;
+        values[peerId] = value;
+        _ = ApplyVolumeAsync(peerId, channel, value);
+        StateHasChanged();
+    }
+
+    private async Task ApplyVolumeAsync(string peerId, string channel, int value)
+    {
+        if (_jsModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _jsModule.InvokeVoidAsync("setPeerVolume", peerId, channel, value / 100.0);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            // Volume will be re-applied when the next audio track arrives.
+        }
+    }
+
+    private async Task PushInitialVolumesAsync()
+    {
+        if (_jsModule is null || _room is null)
+        {
+            return;
+        }
+
+        foreach (var participant in _room.Participants.Where(p => p.Id != Guest.Id))
+        {
+            try
+            {
+                await _jsModule.InvokeVoidAsync("setPeerVolume", participant.Id, VoiceChannel, GetVolume(VoiceChannel, participant.Id) / 100.0);
+                await _jsModule.InvokeVoidAsync("setPeerVolume", participant.Id, ScreenChannel, GetVolume(ScreenChannel, participant.Id) / 100.0);
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                break;
+            }
+        }
+    }
+
+    private async Task SendChatAsync()
+    {
+        if (_chatSending || _room is null)
+        {
+            return;
+        }
+
+        _chatError = null;
+        if (!InputRules.TryNormalizeChat(_chatDraft, out _, out var validationError))
+        {
+            _chatError = validationError;
+            return;
+        }
+
+        _chatSending = true;
+        try
+        {
+            if (Rooms.SendChatMessage(Code, Guest.Id, _chatDraft, out var error))
+            {
+                _chatDraft = string.Empty;
+                _scrollChatPending = true;
+                _unreadChat = 0;
+            }
+            else
+            {
+                _chatError = error ?? "Não foi possível enviar a mensagem.";
+            }
+        }
+        finally
+        {
+            _chatSending = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ScrollChatAsync()
+    {
+        if (!_scrollChatPending)
+        {
+            return;
+        }
+
+        _scrollChatPending = false;
+        if (!_showChat)
+        {
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("onda.scrollToBottom", _chatMessagesRef);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            // Scrolling is a progressive enhancement.
+        }
+    }
+
+    private async Task JoinFromGateAsync()
+    {
+        if (_joining || _roomInfo is null)
+        {
+            return;
+        }
+
+        _joining = true;
+        _gateError = null;
+        try
+        {
+            await Task.Delay(180);
+            var result = Rooms.JoinRoom(Code, Guest.Id, Guest.AvatarTone, Guest.Name, _gatePassword);
+            if (result.Status == JoinRoomStatus.Success && result.Room is not null)
+            {
+                EnterRoom(result.Room);
+            }
+            else
+            {
+                _gateError = result.Error ?? "Não foi possível entrar na sala.";
+                _roomInfo = Rooms.GetRoomInfo(Code, Guest.Id) ?? _roomInfo;
+            }
+        }
+        finally
+        {
+            _joining = false;
+            StateHasChanged();
+        }
+    }
+
+    private Task JoinWithoutPasswordAsync() => JoinRoomWithoutPasswordCoreAsync();
+
+    private async Task JoinRoomWithoutPasswordCoreAsync()
+    {
+        if (_joining || _roomInfo is null)
+        {
+            return;
+        }
+
+        _joining = true;
+        _gateError = null;
+        try
+        {
+            await Task.Delay(140);
+            var result = Rooms.JoinRoom(Code, Guest.Id, Guest.AvatarTone, Guest.Name, null);
+            if (result.Status == JoinRoomStatus.Success && result.Room is not null)
+            {
+                EnterRoom(result.Room);
+            }
+            else
+            {
+                _gateError = result.Error ?? "Não foi possível entrar na sala.";
+                _roomInfo = Rooms.GetRoomInfo(Code, Guest.Id) ?? _roomInfo;
+            }
+        }
+        finally
+        {
+            _joining = false;
+            StateHasChanged();
+        }
+    }
+
+    private Task RefreshGateAsync()
+    {
+        _roomInfo = Rooms.GetRoomInfo(Code, Guest.Id);
+        if (_roomInfo is null)
+        {
+            _notFound = true;
+        }
+
+        _gateError = null;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task CopyRoomLinkAsync()
+    {
+        try
+        {
+            var copied = await JS.InvokeAsync<bool>("onda.copyText", RoomUrl);
+            Toasts.Show(
+                copied ? "Link copiado. Agora é só passar a onda." : "Não foi possível copiar o link.",
+                copied ? ToastKind.Success : ToastKind.Error);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            Toasts.Show("Não foi possível copiar o link.", ToastKind.Error);
+        }
+    }
+
+    private async Task LeaveRoomAsync()
+    {
+        if (_leaveBusy)
+        {
+            return;
+        }
+
+        _leaveBusy = true;
+        try
+        {
+            if (_jsModule is not null)
+            {
+                try
+                {
+                    await _jsModule.InvokeVoidAsync("disposeRoom");
+                }
+                catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+                {
+                    // Navigation can continue even if the media cleanup failed.
+                }
+            }
+
+            Rooms.LeaveRoom(Code, Guest.Id, closeIfEmpty: true);
+            _joined = false;
+        }
+        finally
+        {
+            _leaveBusy = false;
+            Nav.NavigateTo("/");
+        }
+    }
+
+    private async Task ReloadPageAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("onda.reloadPage");
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            Nav.NavigateTo(RoomUrl, forceLoad: true);
+        }
+    }
+
+    private void OpenNameDialog()
+    {
+        _nameDraft = Guest.Name;
+        _nameError = null;
+        _showNameDialog = true;
+    }
+
+    private void OpenQualityDialog()
+    {
+        _qualityDraft = _screenQuality.Clone();
+        _showQualityDialog = true;
+    }
+
+    private void CloseQualityDialog() => _showQualityDialog = false;
+
+    private void ApplyQualityPreset(string preset)
+    {
+        _qualityDraft = ScreenShareQuality.ForPreset(preset);
+    }
+
+    private void MarkQualityCustom()
+    {
+        _qualityDraft.Preset = ScreenShareQuality.PresetCustom;
+    }
+
+    private void ResetQualityDefaults()
+    {
+        _qualityDraft = ScreenShareQuality.ForPreset(ScreenShareQuality.PresetBalanced);
+    }
+
+    private void OnQualityBitrateInput(ChangeEventArgs args)
+    {
+        if (int.TryParse(args.Value?.ToString(), out var bitrate))
+        {
+            _qualityDraft.BitrateKbps = Math.Clamp(bitrate, 800, 20_000);
+            _qualityDraft.Preset = ScreenShareQuality.PresetCustom;
+        }
+    }
+
+    private async Task SaveQualityAsync()
+    {
+        _screenQuality = _qualityDraft.Clone().Normalize();
+        _qualityDraft = _screenQuality.Clone();
+        _showQualityDialog = false;
+
+        try
+        {
+            var json = JsonSerializer.Serialize(_screenQuality, QualityJsonOptions);
+            await JS.InvokeAsync<bool>("onda.saveScreenQuality", json);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            // The current session still keeps the values in memory.
+        }
+
+        if (_jsModule is not null)
+        {
+            try
+            {
+                await _jsModule.InvokeVoidAsync("setScreenQuality", ToJsQuality(_screenQuality));
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                Toasts.Show("As preferências foram salvas, mas não puderam ser aplicadas agora.", ToastKind.Error);
+                return;
+            }
+        }
+
+        Toasts.Show("Ajustes de transmissão salvos para o próximo compartilhamento.", ToastKind.Success);
+    }
+
+    private void CloseNameDialog() => _showNameDialog = false;
+
+    private Task SaveNameAsync()
+    {
+        if (!Guest.TrySetName(_nameDraft, out var error))
+        {
+            _nameError = error;
+            return Task.CompletedTask;
+        }
+
+        if (_joined && _self is not null)
+        {
+            if (!Rooms.RenameParticipant(Code, Guest.Id, Guest.Name, out var renameError))
+            {
+                Toasts.Show(renameError ?? "Não foi possível atualizar seu nome.", ToastKind.Error);
+                _showNameDialog = false;
+                return Task.CompletedTask;
+            }
+        }
+
+        _showNameDialog = false;
+        Toasts.Show("Nome atualizado.", ToastKind.Success);
+        return Task.CompletedTask;
+    }
+
+    private static string StatusLabel(ParticipantView participant)
+    {
+        if (participant.Speaking)
+        {
+            return "Falando agora";
+        }
+
+        if (participant.ScreenOn)
+        {
+            return "Compartilhando a tela";
+        }
+
+        if (participant.CameraOn)
+        {
+            return "Câmera ligada";
+        }
+
+        return participant.MicOn ? "Microfone ligado" : "Silenciado";
+    }
+
+    private static string PeopleCountLabel(int count) =>
+        count == 1 ? "1 pessoa" : $"{count} pessoas";
+
+    private static string FormatTime(DateTimeOffset timestamp) =>
+        timestamp.ToLocalTime().ToString("HH:mm");
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        Rooms.RoomChanged -= HandleRoomChanged;
+        Rooms.ChatChanged -= HandleChatChanged;
+        Rooms.SignalReceived -= HandleSignal;
+
+        if (_joined)
+        {
+            Rooms.LeaveRoom(Code, Guest.Id);
+            _joined = false;
+        }
+
+        if (_jsModule is not null)
+        {
+            try
+            {
+                await _jsModule.InvokeVoidAsync("disposeRoom");
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException)
+            {
+                // The circuit may already be disconnected.
+            }
+
+            try
+            {
+                await _jsModule.DisposeAsync();
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException)
+            {
+                // Ignore teardown failures.
+            }
+        }
+
+        _dotNetRef?.Dispose();
+    }
+}

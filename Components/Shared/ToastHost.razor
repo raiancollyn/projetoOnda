@@ -1,0 +1,55 @@
+@using Onda.Services
+@inject ToastService ToastService
+@implements IDisposable
+
+<div class="toast-stack" aria-live="polite" aria-atomic="false">
+    @foreach (var toast in _messages)
+    {
+        <div class="toast toast-@toast.Kind.ToString().ToLowerInvariant()" @key="toast.Id" role="status">
+            <span class="toast-icon" aria-hidden="true">
+                @switch (toast.Kind)
+                {
+                    case ToastKind.Success:
+                        <Icon Name="check" Size="16" />
+                        break;
+                    case ToastKind.Error:
+                        <Icon Name="alert" Size="17" />
+                        break;
+                    default:
+                        <Icon Name="wave" Size="17" />
+                        break;
+                }
+            </span>
+            <span class="toast-message">@toast.Message</span>
+            <button type="button" class="toast-dismiss" aria-label="Fechar aviso" @onclick="() => Dismiss(toast.Id)">
+                <Icon Name="x" Size="14" />
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<ToastMessage> _messages = [];
+
+    protected override void OnInitialized()
+    {
+        _messages = ToastService.Messages;
+        ToastService.Changed += HandleChanged;
+    }
+
+    private void HandleChanged()
+    {
+        _ = InvokeAsync(() =>
+        {
+            _messages = ToastService.Messages;
+            StateHasChanged();
+        });
+    }
+
+    private void Dismiss(Guid id) => ToastService.Dismiss(id);
+
+    public void Dispose()
+    {
+        ToastService.Changed -= HandleChanged;
+    }
+}

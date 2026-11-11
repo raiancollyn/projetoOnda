@@ -1,0 +1,300 @@
+.media-tile {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 1rem;
+    background:
+        radial-gradient(circle at 70% 10%, rgba(110, 212, 184, 0.11), transparent 37%),
+        var(--forest-3);
+    color: var(--cream);
+    text-align: left;
+    cursor: pointer;
+    isolation: isolate;
+    transition: border-color 220ms ease, box-shadow 250ms ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.media-tile:hover {
+    border-color: rgba(205, 242, 124, 0.42);
+}
+
+.media-tile:not(.can-focus) {
+    cursor: default;
+}
+
+.media-tile:not(.can-focus):hover {
+    border-color: rgba(255, 255, 255, 0.09);
+}
+
+.media-tile.is-featured {
+    border-color: rgba(205, 242, 124, 0.5);
+    box-shadow: 0 0 0 1px rgba(205, 242, 124, 0.14), 0 18px 50px rgba(2, 11, 8, 0.28);
+}
+
+.media-tile video {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #06100d;
+    pointer-events: none;
+}
+
+.media-tile.is-screen video {
+    object-fit: contain;
+}
+
+.media-tile.is-self.is-camera video {
+    transform: scaleX(-1);
+}
+
+.media-placeholder {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.7rem;
+    background:
+        radial-gradient(circle at 70% 15%, rgba(205, 242, 124, 0.12), transparent 36%),
+        radial-gradient(circle at 20% 90%, rgba(255, 111, 89, 0.08), transparent 40%),
+        var(--forest-3);
+    color: rgba(247, 243, 235, 0.45);
+    font-size: 0.67rem;
+    font-weight: 560;
+    letter-spacing: -0.01em;
+}
+
+.media-placeholder .onda-icon {
+    opacity: 0.7;
+}
+
+.media-topline {
+    position: absolute;
+    z-index: 3;
+    top: 0.6rem;
+    left: 0.6rem;
+    right: 0.6rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    pointer-events: none;
+}
+
+.media-kind,
+.media-focus-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.32rem;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    background: rgba(6, 16, 13, 0.66);
+    color: rgba(247, 243, 235, 0.82);
+    font-size: 0.58rem;
+    font-weight: 620;
+    line-height: 1;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    white-space: nowrap;
+    transition: opacity 180ms ease, background-color 180ms ease;
+}
+
+.media-focus-hint {
+    opacity: 0;
+    transform: translateY(-2px);
+    transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.media-tile:hover .media-focus-hint,
+.media-tile:focus-visible .media-focus-hint {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.media-tile.is-featured .media-focus-hint {
+    opacity: 1;
+    transform: none;
+    background: rgba(205, 242, 124, 0.92);
+    color: var(--ink);
+    border-color: transparent;
+}
+
+.media-caption {
+    position: absolute;
+    z-index: 3;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 2.8rem 0.75rem 0.7rem;
+    background: linear-gradient(to top, rgba(3, 11, 8, 0.86), rgba(3, 11, 8, 0));
+    pointer-events: none;
+}
+
+.media-tile ::deep .avatar {
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+.media-person {
+    display: flex;
+    flex-direction: column;
+    gap: 0.06rem;
+    min-width: 0;
+    flex: 1;
+}
+
+.media-person strong {
+    overflow: hidden;
+    color: #fffdf7;
+    font-size: 0.74rem;
+    font-weight: 670;
+    letter-spacing: -0.012em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.media-person > span {
+    overflow: hidden;
+    color: rgba(247, 243, 235, 0.7);
+    font-size: 0.59rem;
+    font-weight: 500;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.media-flags {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex: 0 0 auto;
+}
+
+.media-you {
+    padding: 0.22rem 0.38rem;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+    color: rgba(247, 243, 235, 0.68);
+    font-size: 0.5rem;
+    font-weight: 650;
+    line-height: 1;
+}
+
+.media-flag {
+    display: inline-grid;
+    place-items: center;
+    width: 1.55rem;
+    height: 1.55rem;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(247, 243, 235, 0.75);
+}
+
+.media-speaking-bars {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    height: 0.9rem;
+    padding: 0 0.15rem;
+}
+
+.media-speaking-bars i {
+    width: 2px;
+    height: 45%;
+    border-radius: 1px;
+    background: var(--lime);
+    animation: media-eq 800ms ease-in-out infinite;
+}
+
+.media-speaking-bars i:nth-child(2) {
+    height: 90%;
+    animation-delay: -250ms;
+}
+
+.media-speaking-bars i:nth-child(3) {
+    height: 65%;
+    animation-delay: -470ms;
+}
+
+.media-tile.is-thumbnail {
+    border-radius: 0.7rem;
+}
+
+.media-tile.is-thumbnail .media-topline {
+    top: 0.35rem;
+    left: 0.35rem;
+    right: 0.35rem;
+}
+
+.media-tile.is-thumbnail .media-kind {
+    padding: 0.25rem 0.36rem;
+    font-size: 0.48rem;
+}
+
+.media-tile.is-thumbnail .media-caption {
+    gap: 0.35rem;
+    padding: 1.5rem 0.45rem 0.4rem;
+}
+
+.media-tile.is-thumbnail .media-person strong {
+    font-size: 0.58rem;
+}
+
+.media-tile.is-thumbnail ::deep .avatar {
+    display: none;
+}
+
+@keyframes media-eq {
+    0%, 100% {
+        transform: scaleY(0.35);
+    }
+
+    50% {
+        transform: scaleY(1);
+    }
+}
+
+@media (max-width: 700px) {
+    .media-tile {
+        border-radius: 0.8rem;
+    }
+
+    .media-focus-hint span {
+        display: none;
+    }
+
+    .media-kind {
+        padding: 0.3rem 0.42rem;
+        font-size: 0.52rem;
+    }
+
+    .media-caption {
+        padding: 2.2rem 0.55rem 0.5rem;
+    }
+
+    .media-person strong {
+        font-size: 0.68rem;
+    }
+
+    .media-person > span {
+        display: none;
+    }
+
+    .media-you {
+        display: none;
+    }
+}

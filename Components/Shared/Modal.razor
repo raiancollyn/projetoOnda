@@ -1,0 +1,58 @@
+@if (IsOpen)
+{
+    <div class="modal-backdrop" tabindex="-1" @onclick="HandleBackdropClick" @onkeydown="HandleKeyDown">
+        <div class="modal-card @(Wide ? "modal-wide" : null)"
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="@_titleId"
+             @onclick:stopPropagation="true">
+            <div class="modal-heading">
+                <div class="modal-heading-copy">
+                    @if (!string.IsNullOrWhiteSpace(Eyebrow))
+                    {
+                        <span class="eyebrow modal-eyebrow">@Eyebrow</span>
+                    }
+                    <h2 id="@_titleId">@Title</h2>
+                </div>
+                <button type="button" class="icon-button modal-close-button" aria-label="Fechar" @onclick="CloseAsync">
+                    <Icon Name="x" Size="19" />
+                </button>
+            </div>
+            @ChildContent
+        </div>
+    </div>
+}
+
+@code {
+    private readonly string _titleId = $"modal-title-{Guid.NewGuid():N}";
+
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? Eyebrow { get; set; }
+
+    [Parameter]
+    public bool Wide { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    private Task CloseAsync() => OnClose.InvokeAsync();
+
+    private Task HandleBackdropClick() => CloseAsync();
+
+    private async Task HandleKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            await CloseAsync();
+        }
+    }
+}

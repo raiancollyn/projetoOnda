@@ -1,0 +1,18 @@
+name: onda-livekit
+
+services:
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    restart: unless-stopped
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?Define LIVEKIT_API_KEY in .env}: ${LIVEKIT_API_SECRET:?Define LIVEKIT_API_SECRET in .env}"
+      LIVEKIT_PORT: "7880"
+      LIVEKIT_RTC_TCP_PORT: "7881"
+      LIVEKIT_RTC_PORT_RANGE_START: "50000"
+      LIVEKIT_RTC_PORT_RANGE_END: "50040"
+      LIVEKIT_RTC_USE_EXTERNAL_IP: ${LIVEKIT_USE_EXTERNAL_IP:-true}
+      LIVEKIT_LOG_LEVEL: info
+    ports:
+      - "${LIVEKIT_BIND:-0.0.0.0}:7880:7880/tcp"
+      - "${LIVEKIT_BIND:-0.0.0.0}:7881:7881/tcp"
+      - "50000-50040:50000-50040/udp"

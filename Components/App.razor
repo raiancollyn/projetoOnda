@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f7f3eb" />
+    <meta name="color-scheme" content="light" />
+    <meta name="description" content="Onda é um espaço no navegador para conversar por voz, compartilhar a tela e a webcam, e trocar mensagens. Crie uma sala e convide quem você quiser." />
+    <meta property="og:title" content="Onda — conversas que fluem" />
+    <meta property="og:description" content="Voz, tela e presença no navegador. Crie uma sala e convide quem você quiser." />
+    <meta property="og:type" content="website" />
+    <base href="/" />
+    <ResourcePreloader />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="@Assets["app.css"]" />
+    <link rel="stylesheet" href="@Assets["Onda.styles.css"]" />
+    <ImportMap />
+    <HeadOutlet @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+</head>
+
+<body>
+    <div id="boot-screen" class="boot-screen" aria-live="polite">
+        <div class="boot-inner">
+            <span class="boot-mark" aria-hidden="true">
+                <svg viewBox="0 0 36 36">
+                    <rect width="36" height="36" rx="11" fill="#CDF27C"></rect>
+                    <path d="M7.5 21.5c3.4-8.1 6.4-8.1 9.7 0 3.4 8.1 6.4 8.1 9.8 0" fill="none" stroke="#14231f" stroke-width="2.6" stroke-linecap="round"></path>
+                    <path d="M9.5 13.5c2.8-5.2 5.2-5.2 8 0s5.2 5.2 8 0" fill="none" stroke="#14231f" stroke-width="2.2" stroke-linecap="round" opacity=".38"></path>
+                </svg>
+            </span>
+            <span class="boot-word">onda<span>.</span></span>
+            <span class="boot-shimmer" aria-hidden="true"></span>
+        </div>
+    </div>
+
+    <Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+    <ReconnectModal />
+    <script src="@Assets["js/site.js"]"></script>
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+</body>
+
+</html>

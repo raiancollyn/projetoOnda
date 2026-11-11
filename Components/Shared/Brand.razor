@@ -1,0 +1,19 @@
+@using Onda.Components.Shared
+
+<a href="/" class="brand @(Light ? "brand-light" : null)" aria-label="Onda — página inicial">
+    <span class="brand-mark-shell">
+        <svg class="brand-mark" viewBox="0 0 36 36" role="presentation" focusable="false">
+            <rect x="0" y="0" width="36" height="36" rx="11" fill="currentColor" />
+            <path d="M7.5 21.5c3.4-8.1 6.4-8.1 9.7 0 3.4 8.1 6.4 8.1 9.8 0"
+                  fill="none" stroke="#14231f" stroke-width="2.6" stroke-linecap="round" />
+            <path d="M9.5 13.5c2.8-5.2 5.2-5.2 8 0s5.2 5.2 8 0"
+                  fill="none" stroke="#14231f" stroke-width="2.2" stroke-linecap="round" opacity=".38" />
+        </svg>
+    </span>
+    <span class="brand-word">onda<span class="brand-dot">.</span></span>
+</a>
+
+@code {
+    [Parameter]
+    public bool Light { get; set; }
+}

@@ -1,0 +1,704 @@
+@page "/"
+@using System.Globalization
+@using System.Text
+@implements IDisposable
+
+@inject GuestSession Guest
+@inject RoomService Rooms
+@inject ToastService Toasts
+@inject NavigationManager Nav
+
+<PageTitle>Onda — conversas que fluem</PageTitle>
+
+<div class="home">
+    <header class="site-header">
+        <div class="shell nav-shell">
+            <Brand />
+
+            <nav class="desktop-nav" aria-label="Navegação principal">
+                <a href="#salas">Salas ao vivo</a>
+                <a href="#como-funciona">Como funciona</a>
+            </nav>
+
+            <div class="nav-actions">
+                <button type="button" class="user-chip" @onclick="OpenNameDialog" aria-label="Editar seu nome">
+                    <Avatar Name="@Guest.Name" Tone="@Guest.AvatarTone" Size="28" />
+                    <span class="user-chip-name">@Guest.Name</span>
+                    <Icon Name="pencil" Size="13" />
+                </button>
+                <button type="button" class="button button-primary button-small nav-create" @onclick="OpenCreateDialog">
+                    <Icon Name="plus" Size="16" />
+                    <span>Criar sala</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="hero-aura hero-aura-one" aria-hidden="true"></div>
+            <div class="hero-aura hero-aura-two" aria-hidden="true"></div>
+            <div class="hero-grid-lines" aria-hidden="true"></div>
+
+            <div class="shell hero-grid">
+                <div class="hero-copy">
+                    <p class="eyebrow hero-eyebrow">
+                        <span class="live-dot" aria-hidden="true"></span>
+                        Voz, tela e presença — direto no navegador
+                    </p>
+
+                    <h1>Conversas<br />que <em>fluem.</em></h1>
+
+                    <p class="hero-lede">
+                        Crie uma sala, chame quem importa e converse por voz, webcam e tela.
+                        Sem download. Sem complicação. Só presença.
+                    </p>
+
+                    <div class="hero-actions">
+                        <button type="button" class="button button-accent button-large" @onclick="OpenCreateDialog">
+                            <span>Criar uma sala</span>
+                            <Icon Name="arrow-up-right" Size="18" />
+                        </button>
+
+                        <form class="quick-join" @onsubmit="SubmitQuickJoin" @onsubmit:preventDefault="true">
+                            <span class="quick-join-icon" aria-hidden="true"><Icon Name="link" Size="17" /></span>
+                            <input type="text"
+                                   @bind="_joinCode"
+                                   @bind:event="oninput"
+                                   aria-label="Código da sala"
+                                   placeholder="Código da sala"
+                                   autocomplete="off"
+                                   spellcheck="false" />
+                            <button type="submit" aria-label="Entrar pelo código da sala">
+                                <Icon Name="arrow-right" Size="18" />
+                            </button>
+                        </form>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(_joinError))
+                    {
+                        <p class="inline-error hero-join-error" role="alert">
+                            <Icon Name="alert" Size="15" />
+                            @_joinError
+                        </p>
+                    }
+
+                    <ul class="hero-notes" aria-label="Destaques">
+                        <li><Icon Name="check" Size="14" /> Sem instalar nada</li>
+                        <li><Icon Name="check" Size="14" /> Até @Rooms.MaxParticipantsPerRoom pessoas</li>
+                        <li><Icon Name="check" Size="14" /> Salas com ou sem senha</li>
+                    </ul>
+                </div>
+
+                <div class="hero-visual" aria-hidden="true">
+                    <div class="preview-glow"></div>
+                    <div class="preview-shell">
+                        <div class="preview-topbar">
+                            <span class="window-dots"><i></i><i></i><i></i></span>
+                            <span class="preview-room-title"><span class="live-dot"></span> Sala de produto</span>
+                            <span class="preview-top-icon"><Icon Name="lock" Size="13" /></span>
+                        </div>
+
+                        <div class="preview-canvas">
+                            <div class="mock-screen">
+                                <div class="mock-screen-inner">
+                                    <span class="mock-kicker">PRODUTO / Q3</span>
+                                    <div class="mock-headline">Ideias que<br /><em>ganham forma.</em></div>
+                                    <div class="mock-stat-row">
+                                        <span><b>+42%</b><small>clareza</small></span>
+                                        <span><b>3 sprints</b><small>até o lançamento</small></span>
+                                    </div>
+                                    <div class="mock-chart">
+                                        <i style="height: 35%"></i>
+                                        <i style="height: 50%"></i>
+                                        <i style="height: 43%"></i>
+                                        <i style="height: 72%"></i>
+                                        <i style="height: 61%"></i>
+                                        <i style="height: 88%"></i>
+                                        <i style="height: 76%"></i>
+                                    </div>
+                                </div>
+                                <span class="tile-label"><Icon Name="screen" Size="13" /> Tela de Marina</span>
+                            </div>
+
+                            <div class="mock-cam">
+                                <span class="mock-cam-halo"></span>
+                                <Avatar Name="Rafa Lima" Tone="2" Size="74" />
+                                <span class="speaking-chip"><span class="mini-eq"><i></i><i></i><i></i></span> Falando</span>
+                                <span class="tile-label"><Icon Name="camera" Size="13" /> Rafa</span>
+                            </div>
+                        </div>
+
+                        <div class="preview-bottom">
+                            <div class="preview-avatars">
+                                <Avatar Name="Marina Alves" Tone="1" Size="25" />
+                                <Avatar Name="Rafa Lima" Tone="2" Size="25" />
+                                <Avatar Name="Bia Nunes" Tone="5" Size="25" />
+                                <span class="preview-more">+2</span>
+                            </div>
+                            <div class="preview-controls">
+                                <span><Icon Name="mic" Size="14" /></span>
+                                <span><Icon Name="camera" Size="14" /></span>
+                                <span class="control-active"><Icon Name="screen" Size="14" /></span>
+                                <span class="control-leave"><Icon Name="phone-off" Size="14" /></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="floating-card floating-speaking">
+                        <Avatar Name="Marina Alves" Tone="1" Size="33" Speaking="true" />
+                        <div>
+                            <span class="floating-eyebrow">AGORA</span>
+                            <strong>Marina está falando</strong>
+                        </div>
+                        <span class="big-eq"><i></i><i></i><i></i><i></i></span>
+                    </div>
+
+                    <div class="floating-card floating-protected">
+                        <span class="floating-icon"><Icon Name="lock" Size="16" /></span>
+                        <div>
+                            <strong>Sala protegida</strong>
+                            <span>Só entra quem tem a senha</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="signal-strip" aria-label="O que você encontra na Onda">
+            <div class="shell signal-grid">
+                <div class="signal-item">
+                    <span class="signal-icon"><Icon Name="headphones" Size="19" /></span>
+                    <div><strong>Voz nítida</strong><span>Áudio em tempo real, direto entre vocês.</span></div>
+                </div>
+                <div class="signal-item">
+                    <span class="signal-icon"><Icon Name="screen" Size="19" /></span>
+                    <div><strong>Tela e webcam</strong><span>Mostre o que importa, sem sair da conversa.</span></div>
+                </div>
+                <div class="signal-item">
+                    <span class="signal-icon"><Icon Name="volume" Size="19" /></span>
+                    <div><strong>Seu volume, seu jeito</strong><span>Ajuste cada pessoa e cada tela individualmente.</span></div>
+                </div>
+                <div class="signal-item">
+                    <span class="signal-icon"><Icon Name="shield" Size="19" /></span>
+                    <div><strong>Entrada protegida</strong><span>Salas abertas ou com senha. Você escolhe.</span></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="lobby-section" id="salas">
+            <div class="shell">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow"><span class="live-dot"></span> Acontecendo agora</p>
+                        <h2>Salas ao vivo <span class="count-badge">@_rooms.Count</span></h2>
+                        <p class="section-lede">Entre em uma conversa que já está rolando ou abra o seu próprio espaço.</p>
+                    </div>
+
+                    <div class="lobby-tools">
+                        <label class="search-field">
+                            <Icon Name="search" Size="17" />
+                            <span class="visually-hidden">Buscar salas</span>
+                            <input type="search" @bind="_search" @bind:event="oninput" placeholder="Buscar sala..." autocomplete="off" />
+                        </label>
+                        <button type="button" class="button button-primary button-small lobby-create" @onclick="OpenCreateDialog">
+                            <Icon Name="plus" Size="16" />
+                            <span>Nova sala</span>
+                        </button>
+                    </div>
+                </div>
+
+                @if (_isLoading)
+                {
+                    <div class="rooms-grid" aria-label="Carregando salas">
+                        @for (var i = 0; i < 3; i++)
+                        {
+                            <div class="room-card room-card-skeleton" aria-hidden="true"></div>
+                        }
+                    </div>
+                }
+                else if (_rooms.Count == 0)
+                {
+                    <div class="lobby-empty">
+                        <div class="empty-orbit" aria-hidden="true">
+                            <span class="empty-orbit-ring ring-one"></span>
+                            <span class="empty-orbit-ring ring-two"></span>
+                            <span class="empty-orbit-core"><Icon Name="wave" Size="27" /></span>
+                        </div>
+                        <div class="lobby-empty-copy">
+                            <p class="eyebrow">O palco está livre</p>
+                            <h3>Nenhuma sala no ar ainda.</h3>
+                            <p>Abra a primeira e transforme uma ideia solta em conversa.</p>
+                        </div>
+                        <button type="button" class="button button-accent" @onclick="OpenCreateDialog">
+                            <Icon Name="plus" Size="17" /> Criar a primeira sala
+                        </button>
+                    </div>
+                }
+                else if (FilteredRooms.Count == 0)
+                {
+                    <div class="no-results">
+                        <span class="no-results-icon"><Icon Name="search" Size="22" /></span>
+                        <h3>Nenhum resultado para “@_search”.</h3>
+                        <p>Tente outro nome ou limpe a busca para ver todas as salas.</p>
+                        <button type="button" class="button button-secondary button-small" @onclick="ClearSearch">Limpar busca</button>
+                    </div>
+                }
+                else
+                {
+                    <div class="rooms-grid">
+                        @for (var i = 0; i < FilteredRooms.Count; i++)
+                        {
+                            var room = FilteredRooms[i];
+                            <button type="button"
+                                    class="room-card room-tone-@(i % 4)"
+                                    @onclick="() => OpenRoom(room.Id)"
+                                    aria-label="@($"Entrar na sala {room.Name}")">
+                                <span class="room-card-glow" aria-hidden="true"></span>
+                                <span class="room-card-head">
+                                    <span class="room-card-icon"><Icon Name="@(room.HasPassword ? "lock" : "wave")" Size="19" /></span>
+                                    <span class="room-access @(room.HasPassword ? "is-private" : null)">
+                                        <Icon Name="@(room.HasPassword ? "lock" : "globe")" Size="12" />
+                                        @(room.HasPassword ? "Com senha" : "Aberta")
+                                    </span>
+                                </span>
+
+                                <span class="room-card-copy">
+                                    <strong class="room-card-title">@room.Name</strong>
+                                    <span class="room-card-owner">por @room.OwnerName</span>
+                                </span>
+
+                                <span class="room-card-footer">
+                                    <span class="room-avatar-stack" aria-hidden="true">
+                                        @foreach (var person in room.People)
+                                        {
+                                            <Avatar Name="@person.Name" Tone="@person.ColorIndex" Size="27" Speaking="@person.Speaking" />
+                                        }
+                                        @if (room.ParticipantCount > room.People.Count)
+                                        {
+                                            <span class="avatar-overflow">+@(room.ParticipantCount - room.People.Count)</span>
+                                        }
+                                    </span>
+                                    <span class="room-enter">
+                                        <span class="room-count"><span class="live-dot"></span> @PeopleLabel(room.ParticipantCount)</span>
+                                        <span class="room-enter-button">Entrar <Icon Name="arrow-right" Size="15" /></span>
+                                    </span>
+                                </span>
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        </section>
+
+        <section class="how-section" id="como-funciona">
+            <div class="shell">
+                <div class="how-heading">
+                    <div>
+                        <p class="eyebrow">Simples por dentro. Vivo por fora.</p>
+                        <h2>Da ideia à conversa<br />em três passos.</h2>
+                    </div>
+                    <p>Uma sala da Onda nasce pronta. Você só precisa do navegador e de vontade de aparecer.</p>
+                </div>
+
+                <div class="steps-grid">
+                    <article class="step-card">
+                        <span class="step-number">01</span>
+                        <span class="step-icon"><Icon Name="plus" Size="21" /></span>
+                        <h3>Abra a sua sala</h3>
+                        <p>Escolha um nome e defina se ela é aberta ou protegida por senha. Leva menos de um minuto.</p>
+                    </article>
+                    <article class="step-card">
+                        <span class="step-number">02</span>
+                        <span class="step-icon"><Icon Name="link" Size="21" /></span>
+                        <h3>Passe a onda</h3>
+                        <p>Compartilhe o link ou deixe sua sala aparecer na página inicial para quem já está por aqui.</p>
+                    </article>
+                    <article class="step-card">
+                        <span class="step-number">03</span>
+                        <span class="step-icon"><Icon Name="wave" Size="21" /></span>
+                        <h3>Converse de verdade</h3>
+                        <p>Ligue o microfone, abra a câmera, compartilhe a tela e ajuste o volume de cada pessoa.</p>
+                    </article>
+                </div>
+
+                <div class="privacy-banner">
+                    <span class="privacy-rings" aria-hidden="true"></span>
+                    <div class="privacy-copy">
+                        <span class="privacy-icon"><Icon Name="shield" Size="22" /></span>
+                        <div>
+                            <p class="eyebrow">Feita para a sua conversa</p>
+                            <h3>Sala aberta para chegar. Senha para entrar.</h3>
+                            <p>O link sozinho não basta quando a sala tem senha. Você decide quem atravessa a porta.</p>
+                        </div>
+                    </div>
+                    <button type="button" class="button button-accent" @onclick="OpenCreateDialog">
+                        Criar minha sala <Icon Name="arrow-up-right" Size="17" />
+                    </button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <div class="shell footer-shell">
+            <div class="footer-brand">
+                <Brand Light="true" />
+                <p>Conversas que fluem,<br />no navegador de todo mundo.</p>
+            </div>
+            <div class="footer-meta">
+                <span class="footer-live">
+                    <span class="live-dot"></span>
+                    @(_rooms.Count == 0 ? "Pronto para a primeira conversa" : $"{_rooms.Count} sala{(_rooms.Count == 1 ? "" : "s")} no ar")
+                </span>
+                <span>Feito para estar presente.</span>
+            </div>
+        </div>
+    </footer>
+</div>
+
+<Modal IsOpen="_showCreateRoom"
+       Title="Criar uma sala"
+       Eyebrow="NOVA ONDA"
+       Wide="true"
+       OnClose="CloseCreateDialog">
+    <form class="create-form" @onsubmit="CreateRoomAsync" @onsubmit:preventDefault="true">
+        <label class="field">
+            <span class="field-label">Nome da sala</span>
+            <input type="text"
+                   class="text-input"
+                   @bind="_roomName"
+                   maxlength="48"
+                   placeholder="Ex.: Café de sexta"
+                   autocomplete="off"
+                   autofocus />
+            <span class="field-hint">Um bom nome já chama as pessoas para dentro.</span>
+        </label>
+
+        <div class="suggestion-row" aria-label="Sugestões de nome">
+            @foreach (var suggestion in Suggestions)
+            {
+                <button type="button" class="suggestion-chip" @onclick="() => _roomName = suggestion">@suggestion</button>
+            }
+        </div>
+
+        <fieldset class="field">
+            <legend class="field-label">Quem pode entrar?</legend>
+            <div class="privacy-options">
+                <button type="button"
+                        class="privacy-option @(!_privateRoom ? "is-selected" : null)"
+                        @onclick="() => _privateRoom = false"
+                        aria-pressed="@(!_privateRoom)">
+                    <span class="privacy-option-icon"><Icon Name="globe" Size="18" /></span>
+                    <span><strong>Aberta</strong><small>Qualquer pessoa com o link entra.</small></span>
+                    <span class="radio-dot"></span>
+                </button>
+                <button type="button"
+                        class="privacy-option @(_privateRoom ? "is-selected" : null)"
+                        @onclick="() => _privateRoom = true"
+                        aria-pressed="@_privateRoom">
+                    <span class="privacy-option-icon"><Icon Name="lock" Size="18" /></span>
+                    <span><strong>Com senha</strong><small>Você define quem tem acesso.</small></span>
+                    <span class="radio-dot"></span>
+                </button>
+            </div>
+        </fieldset>
+
+        @if (_privateRoom)
+        {
+            <label class="field field-reveal">
+                <span class="field-label">Senha da sala</span>
+                <span class="password-input">
+                    <input type="@(_showPassword ? "text" : "password")"
+                           class="text-input"
+                           @bind="_roomPassword"
+                           maxlength="64"
+                           placeholder="Mínimo de 4 caracteres"
+                           autocomplete="new-password" />
+                    <button type="button" aria-label="@(_showPassword ? "Ocultar senha" : "Mostrar senha")" @onclick="() => _showPassword = !_showPassword">
+                        <Icon Name="@(_showPassword ? "eye-off" : "eye")" Size="17" />
+                    </button>
+                </span>
+                <span class="field-hint">Compartilhe a senha só com quem você quer por perto.</span>
+            </label>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(_createError))
+        {
+            <p class="form-error" role="alert"><Icon Name="alert" Size="15" /> @_createError</p>
+        }
+
+        <div class="modal-actions">
+            <span class="modal-note"><Icon Name="users" Size="15" /> Até @Rooms.MaxParticipantsPerRoom pessoas por sala</span>
+            <div class="modal-buttons">
+                <button type="button" class="button button-ghost" @onclick="CloseCreateDialog" disabled="@_createBusy">Cancelar</button>
+                <button type="submit" class="button button-primary" disabled="@_createBusy">
+                    @if (_createBusy)
+                    {
+                        <span class="button-spinner" aria-hidden="true"></span>
+                        <span>Abrindo...</span>
+                    }
+                    else
+                    {
+                        <span>Criar sala</span>
+                        <Icon Name="arrow-right" Size="17" />
+                    }
+                </button>
+            </div>
+        </div>
+    </form>
+</Modal>
+
+<Modal IsOpen="_showNameDialog"
+       Title="Como você quer aparecer?"
+       Eyebrow="SEU NOME"
+       OnClose="CloseNameDialog">
+    <form class="name-form" @onsubmit="SaveNameAsync" @onsubmit:preventDefault="true">
+        <div class="name-preview">
+            <Avatar Name="@(_nameDraft.Length > 0 ? _nameDraft : Guest.Name)" Tone="@Guest.AvatarTone" Size="56" />
+            <div>
+                <strong>@(_nameDraft.Length > 0 ? _nameDraft : Guest.Name)</strong>
+                <span>É assim que os outros vão te ver.</span>
+            </div>
+        </div>
+
+        <label class="field">
+            <span class="field-label">Nome de exibição</span>
+            <input type="text"
+                   class="text-input"
+                   @bind="_nameDraft"
+                   @bind:event="oninput"
+                   maxlength="32"
+                   autocomplete="nickname"
+                   aria-label="Nome de exibição" />
+            <span class="field-hint">Seu nome pode ser trocado quando quiser.</span>
+        </label>
+
+        @if (!string.IsNullOrWhiteSpace(_nameError))
+        {
+            <p class="form-error" role="alert"><Icon Name="alert" Size="15" /> @_nameError</p>
+        }
+
+        <div class="modal-actions modal-actions-end">
+            <div class="modal-buttons">
+                <button type="button" class="button button-ghost" @onclick="CloseNameDialog">Cancelar</button>
+                <button type="submit" class="button button-primary">
+                    Salvar nome <Icon Name="check" Size="17" />
+                </button>
+            </div>
+        </div>
+    </form>
+</Modal>
+
+@code {
+    private static readonly string[] Suggestions = ["Café & ideias", "Papo de sexta", "Só um minuto"];
+
+    private IReadOnlyList<RoomSummaryView> _rooms = [];
+    private IReadOnlyList<RoomSummaryView> FilteredRooms
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_search))
+            {
+                return _rooms;
+            }
+
+            var needle = RemoveDiacritics(_search.Trim());
+            return _rooms
+                .Where(room =>
+                    RemoveDiacritics(room.Name).Contains(needle, StringComparison.OrdinalIgnoreCase) ||
+                    RemoveDiacritics(room.OwnerName).Contains(needle, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+        }
+    }
+
+    private bool _isLoading = true;
+    private string _search = string.Empty;
+
+    private string _joinCode = string.Empty;
+    private string? _joinError;
+
+    private bool _showCreateRoom;
+    private string _roomName = string.Empty;
+    private string _roomPassword = string.Empty;
+    private bool _privateRoom;
+    private bool _showPassword;
+    private string? _createError;
+    private bool _createBusy;
+
+    private bool _showNameDialog;
+    private string _nameDraft = string.Empty;
+    private string? _nameError;
+    private bool _disposed;
+
+    protected override void OnInitialized()
+    {
+        _rooms = Rooms.GetActiveRooms();
+        _isLoading = false;
+        Rooms.LobbyChanged += HandleLobbyChanged;
+        Rooms.RoomChanged += HandleRoomChanged;
+    }
+
+    private void HandleLobbyChanged()
+    {
+        ScheduleRoomsRefresh();
+    }
+
+    private void HandleRoomChanged(string roomId)
+    {
+        // RoomChanged covers joins, leaves, names and media state. Chat uses a
+        // separate SQLite-backed event and does not change the lobby summary.
+        ScheduleRoomsRefresh();
+    }
+
+    private void ScheduleRoomsRefresh()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _ = InvokeAsync(() =>
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _rooms = Rooms.GetActiveRooms();
+            StateHasChanged();
+        });
+    }
+
+    private void OpenCreateDialog()
+    {
+        _showCreateRoom = true;
+        _roomName = string.Empty;
+        _roomPassword = string.Empty;
+        _privateRoom = false;
+        _showPassword = false;
+        _createError = null;
+        _createBusy = false;
+    }
+
+    private void CloseCreateDialog()
+    {
+        if (_createBusy)
+        {
+            return;
+        }
+
+        _showCreateRoom = false;
+    }
+
+    private async Task CreateRoomAsync()
+    {
+        if (_createBusy)
+        {
+            return;
+        }
+
+        _createError = null;
+        _createBusy = true;
+
+        try
+        {
+            var result = Rooms.CreateRoom(
+                _roomName,
+                _privateRoom ? _roomPassword : null,
+                Guest.Id,
+                Guest.Name);
+
+            if (!result.Success || string.IsNullOrWhiteSpace(result.RoomCode))
+            {
+                _createError = result.Error ?? "Não foi possível criar a sala. Tente novamente.";
+                return;
+            }
+
+            _showCreateRoom = false;
+            Nav.NavigateTo($"/sala/{result.RoomCode}");
+        }
+        finally
+        {
+            _createBusy = false;
+        }
+    }
+
+    private void OpenNameDialog()
+    {
+        _nameDraft = Guest.Name;
+        _nameError = null;
+        _showNameDialog = true;
+    }
+
+    private void CloseNameDialog() => _showNameDialog = false;
+
+    private Task SaveNameAsync()
+    {
+        if (!Guest.TrySetName(_nameDraft, out var error))
+        {
+            _nameError = error;
+            return Task.CompletedTask;
+        }
+
+        _showNameDialog = false;
+        Toasts.Show("Nome atualizado.", ToastKind.Success);
+        return Task.CompletedTask;
+    }
+
+    private Task SubmitQuickJoin()
+    {
+        var code = InputRules.NormalizeRoomCode(_joinCode);
+        if (code is null)
+        {
+            _joinError = "Digite um código válido ou cole o link da sala.";
+            return Task.CompletedTask;
+        }
+
+        var info = Rooms.GetRoomInfo(code, Guest.Id);
+        if (info is null)
+        {
+            _joinError = "Não encontramos uma sala com esse código.";
+            return Task.CompletedTask;
+        }
+
+        if (info.IsFull && !info.IsOwner)
+        {
+            _joinError = "Essa sala já está cheia.";
+            return Task.CompletedTask;
+        }
+
+        _joinError = null;
+        Nav.NavigateTo($"/sala/{code}");
+        return Task.CompletedTask;
+    }
+
+    private void ClearSearch() => _search = string.Empty;
+
+    private void OpenRoom(string code) => Nav.NavigateTo($"/sala/{code}");
+
+    private static string PeopleLabel(int count) =>
+        count == 1 ? "1 pessoa" : $"{count} pessoas";
+
+    private static string RemoveDiacritics(string value)
+    {
+        var normalized = value.Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(normalized.Length);
+        foreach (var c in normalized)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+            {
+                builder.Append(c);
+            }
+        }
+
+        return builder.ToString().Normalize(NormalizationForm.FormC);
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        Rooms.LobbyChanged -= HandleLobbyChanged;
+        Rooms.RoomChanged -= HandleRoomChanged;
+    }
+}

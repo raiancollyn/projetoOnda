@@ -1,0 +1,27 @@
+# TLS/WSS overlay for a standalone LiveKit server.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
+#
+# DNS: LIVEKIT_DOMAIN must point to this host and ports 80/443 must be open.
+# WebRTC media still needs the direct ports: 7881/tcp and 50000-50040/udp.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      LIVEKIT_DOMAIN: ${LIVEKIT_DOMAIN:?Define LIVEKIT_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - livekit_caddy_data:/data
+      - livekit_caddy_config:/config
+    depends_on:
+      - livekit
+
+volumes:
+  livekit_caddy_data:
+  livekit_caddy_config:
