@@ -338,6 +338,12 @@ html[data-theme="dark"] .quality-capability-note {
     background: rgba(205, 242, 124, 0.08);
 }
 
+/* The desktop shell renders its own titlebar above the page. Keep the sticky
+   site header below that bar instead of letting it scroll underneath. */
+html.onda-desktop-shell .site-header {
+    top: var(--onda-titlebar-height, 38px) !important;
+}
+
 html[data-theme="dark"] .text-input::placeholder {
     color: var(--ink-muted);
 }
