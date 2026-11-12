@@ -67,3 +67,7 @@ public enum JoinRoomStatus
 public sealed record JoinRoomResult(JoinRoomStatus Status, string? Error, RoomView? Room);
 
 public sealed record CreateRoomResult(bool Success, string? RoomCode, string? Error);
+
+public sealed record CreateHandoffResult(bool Success, string? Token, string? Error);
+
+public sealed record RedeemHandoffResult(bool Success, string? Name, int AvatarTone, string? Error);

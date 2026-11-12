@@ -27,10 +27,15 @@ public sealed class RoomService
     /// </summary>
     public static readonly TimeSpan EmptyRoomGrace = TimeSpan.FromSeconds(30);
 
+    /// <summary>Short-lived, one-time token used to move a guest identity to the desktop app.</summary>
+    public static readonly TimeSpan HandoffLifetime = TimeSpan.FromMinutes(5);
+
     private const string RoomCodeAlphabet = "abcdefghjkmnpqrstuvwxyz23456789";
+    private const int MaxHandoffTokens = 500;
 
     private readonly object _sync = new();
     private readonly Dictionary<string, RoomState> _rooms = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, HandoffState> _handoffs = new(StringComparer.Ordinal);
     private readonly TimeProvider _time;
     private readonly ILogger<RoomService> _logger;
     private readonly MediaOptions _media;
@@ -175,6 +180,150 @@ public sealed class RoomService
         }
     }
 
+    /// <summary>
+    /// Creates a short-lived, one-time token that lets the desktop app continue
+    /// as the current guest (including room ownership).
+    /// </summary>
+    public CreateHandoffResult CreateHandoffToken(string? rawCode, string guestId)
+    {
+        if (string.IsNullOrWhiteSpace(guestId))
+        {
+            return new CreateHandoffResult(false, null, "Sessão inválida.");
+        }
+
+        var code = InputRules.NormalizeRoomCode(rawCode);
+        if (code is null)
+        {
+            return new CreateHandoffResult(false, null, "Sala inválida.");
+        }
+
+        var now = _time.GetUtcNow();
+        lock (_sync)
+        {
+            PruneHandoffsLocked(now);
+
+            if (!_rooms.TryGetValue(code, out var room))
+            {
+                return new CreateHandoffResult(false, null, "Essa sala não existe mais.");
+            }
+
+            if (!room.Participants.TryGetValue(guestId, out var participant))
+            {
+                return new CreateHandoffResult(false, null, "Você não está mais na sala.");
+            }
+
+            if (_handoffs.Count >= MaxHandoffTokens)
+            {
+                return new CreateHandoffResult(false, null, "Muitas transferências em andamento. Tente novamente.");
+            }
+
+            var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
+            _handoffs[token] = new HandoffState
+            {
+                RoomId = room.Id,
+                GuestId = guestId,
+                Name = participant.Name,
+                AvatarTone = participant.AvatarTone,
+                ExpiresAt = now + HandoffLifetime
+            };
+
+            return new CreateHandoffResult(true, token, null);
+        }
+    }
+
+    /// <summary>
+    /// Consumes a handoff token and transfers the previous guest identity,
+    /// ownership and room access to the desktop session.
+    /// </summary>
+    public RedeemHandoffResult RedeemHandoffToken(string? rawCode, string? token, string newGuestId)
+    {
+        if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(newGuestId))
+        {
+            return new RedeemHandoffResult(false, null, 0, "Token de transferência inválido.");
+        }
+
+        var code = InputRules.NormalizeRoomCode(rawCode);
+        if (code is null)
+        {
+            return new RedeemHandoffResult(false, null, 0, "Sala inválida.");
+        }
+
+        var now = _time.GetUtcNow();
+        var changed = false;
+        RedeemHandoffResult result;
+
+        lock (_sync)
+        {
+            PruneHandoffsLocked(now);
+
+            if (!_handoffs.TryGetValue(token, out var handoff))
+            {
+                return new RedeemHandoffResult(false, null, 0, "Este link de transferência expirou ou já foi usado.");
+            }
+
+            if (handoff.ExpiresAt <= now)
+            {
+                _handoffs.Remove(token);
+                return new RedeemHandoffResult(false, null, 0, "Este link de transferência expirou.");
+            }
+
+            if (!_rooms.TryGetValue(code, out var room) ||
+                !string.Equals(room.Id, handoff.RoomId, StringComparison.OrdinalIgnoreCase))
+            {
+                _handoffs.Remove(token);
+                return new RedeemHandoffResult(false, null, 0, "A sala da transferência não existe mais.");
+            }
+
+            if (!room.Participants.TryGetValue(handoff.GuestId, out var previous) ||
+                string.Equals(handoff.GuestId, newGuestId, StringComparison.Ordinal))
+            {
+                _handoffs.Remove(token);
+                return new RedeemHandoffResult(false, null, 0, "A sessão anterior não está mais disponível.");
+            }
+
+            _handoffs.Remove(token);
+            room.Participants.Remove(handoff.GuestId);
+            room.RevokedGuestIds.Add(handoff.GuestId);
+            room.HandoffBypassGuestIds.Add(newGuestId);
+
+            if (string.Equals(room.OwnerId, handoff.GuestId, StringComparison.Ordinal))
+            {
+                room.OwnerId = newGuestId;
+                room.OwnerName = previous.Name;
+                PersistOwnerNameLocked(room, previous.Name, now);
+            }
+
+            if (room.Participants.Count == 0)
+            {
+                room.EmptySince = now;
+            }
+
+            room.LastActivityAt = now;
+            changed = true;
+            result = new RedeemHandoffResult(true, previous.Name, previous.AvatarTone, null);
+        }
+
+        if (changed)
+        {
+            _logger.LogInformation("Room {RoomCode} handoff redeemed by a new desktop session.", code);
+            RaiseRoomChanged(code);
+            RaiseLobbyChanged();
+        }
+
+        return result;
+    }
+
+    private void PruneHandoffsLocked(DateTimeOffset now)
+    {
+        foreach (var expired in _handoffs
+            .Where(pair => pair.Value.ExpiresAt <= now)
+            .Select(pair => pair.Key)
+            .ToArray())
+        {
+            _handoffs.Remove(expired);
+        }
+    }
+
     public RoomView? GetSnapshot(string? rawCode)
     {
         var code = InputRules.NormalizeRoomCode(rawCode);
@@ -236,6 +385,15 @@ public sealed class RoomService
                 return new JoinRoomResult(JoinRoomStatus.NotFound, "Essa sala não existe mais.", null);
             }
 
+            if (room.RevokedGuestIds.Contains(guestId))
+            {
+                return new JoinRoomResult(
+                    JoinRoomStatus.InvalidInput,
+                    "Esta sessão foi transferida para outro dispositivo. Entre novamente.",
+                    null);
+            }
+
+            var handoffBypass = room.HandoffBypassGuestIds.Remove(guestId);
             if (room.Participants.TryGetValue(guestId, out var existing))
             {
                 // Rejoining the same room within the same circuit: refresh presence.
@@ -256,7 +414,7 @@ public sealed class RoomService
                 changed = nameChanged;
                 snapshot = ToViewLocked(room, includeMessages: true);
             }
-            else if (room.HasPassword && !string.Equals(room.OwnerId, guestId, StringComparison.Ordinal))
+            else if (room.HasPassword && !string.Equals(room.OwnerId, guestId, StringComparison.Ordinal) && !handoffBypass)
             {
                 if (string.IsNullOrWhiteSpace(password) || !VerifyPassword(password, room))
                 {
@@ -1010,11 +1168,20 @@ public sealed class RoomService
             System.Text.Encoding.ASCII.GetBytes(expected));
     }
 
+    private sealed class HandoffState
+    {
+        public required string RoomId { get; init; }
+        public required string GuestId { get; init; }
+        public required string Name { get; init; }
+        public int AvatarTone { get; init; }
+        public DateTimeOffset ExpiresAt { get; init; }
+    }
+
     private sealed class RoomState
     {
         public required string Id { get; init; }
         public required string Name { get; init; }
-        public required string OwnerId { get; init; }
+        public required string OwnerId { get; set; }
         public required string OwnerName { get; set; }
         public DateTimeOffset CreatedAt { get; init; }
         public DateTimeOffset LastActivityAt { get; set; }
@@ -1023,6 +1190,8 @@ public sealed class RoomService
         public string? PasswordHash { get; init; }
         public bool HasPassword => !string.IsNullOrEmpty(PasswordHash);
         public Dictionary<string, ParticipantState> Participants { get; } = new(StringComparer.Ordinal);
+        public HashSet<string> RevokedGuestIds { get; } = new(StringComparer.Ordinal);
+        public HashSet<string> HandoffBypassGuestIds { get; } = new(StringComparer.Ordinal);
     }
 
     private sealed class ParticipantState

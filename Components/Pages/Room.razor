@@ -930,7 +930,7 @@ else
                 <span class="room-install-option-icon"><Icon Name="monitor" Size="20" /></span>
                 <span class="room-install-option-copy">
                     <strong>Abrir no Onda Desktop</strong>
-                    <small>Se o aplicativo estiver instalado, esta sala abre direto nele.</small>
+                    <small>Se o app estiver instalado, sua sessão e permissões continuam nele.</small>
                 </span>
                 <Icon Name="arrow-up-right" Size="16" />
             </a>
@@ -1233,6 +1233,9 @@ else
     [Parameter]
     public string Code { get; set; } = string.Empty;
 
+    [SupplyParameterFromQuery(Name = "handoff")]
+    public string? Handoff { get; set; }
+
     private RoomInfoView? _roomInfo;
     private RoomView? _room;
     private ParticipantView? _self;
@@ -1244,6 +1247,9 @@ else
     private bool _disposed;
     private bool _wakeLockRequested;
     private bool _sessionExpired;
+    private bool _handoffBypass;
+    private bool _handoffUrlCleared;
+    private string _desktopHandoffUrl = string.Empty;
 
     private string _gatePassword = string.Empty;
     private string? _gateError;
@@ -1416,7 +1422,10 @@ else
         !_installDesktopApp &&
         !_installMobile;
 
-    private string DesktopDeepLink => $"onda://sala/{Uri.EscapeDataString(Code)}";
+    private string DesktopDeepLink =>
+        string.IsNullOrWhiteSpace(_desktopHandoffUrl)
+            ? $"onda://sala/{Uri.EscapeDataString(Code)}"
+            : _desktopHandoffUrl;
 
     private bool ShowWebInstallOption =>
         _installContextLoaded &&
@@ -1451,6 +1460,24 @@ else
         Rooms.ChatChanged += HandleChatChanged;
         Rooms.SignalReceived += HandleSignal;
 
+        if (!string.IsNullOrWhiteSpace(Handoff))
+        {
+            var handoff = Rooms.RedeemHandoffToken(Code, Handoff, Guest.Id);
+            if (handoff.Success)
+            {
+                Guest.RestoreHandoffIdentity(handoff.Name ?? Guest.Name, handoff.AvatarTone);
+                _handoffBypass = true;
+                Toasts.Show("Sessão transferida para o Onda Desktop.", ToastKind.Success);
+            }
+            else
+            {
+                Toasts.Show(
+                    handoff.Error ?? "Não foi possível transferir a sessão.",
+                    ToastKind.Error,
+                    6000);
+            }
+        }
+
         _roomInfo = Rooms.GetRoomInfo(Code, Guest.Id);
         if (_roomInfo is null)
         {
@@ -1459,7 +1486,7 @@ else
             return;
         }
 
-        if (!_roomInfo.RequiresPassword && !_roomInfo.IsFull)
+        if ((!_roomInfo.RequiresPassword || _handoffBypass) && !_roomInfo.IsFull)
         {
             var result = Rooms.JoinRoom(Code, Guest.Id, Guest.AvatarTone, Guest.Name, null);
             if (result.Status == JoinRoomStatus.Success && result.Room is not null)
@@ -1490,6 +1517,19 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (!_handoffUrlCleared && !string.IsNullOrWhiteSpace(Handoff))
+        {
+            _handoffUrlCleared = true;
+            try
+            {
+                await JS.InvokeVoidAsync("history.replaceState", null, "", $"/sala/{Code}");
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                // The URL is cosmetic; the token is already single-use.
+            }
+        }
+
         if (_disposed || !_joined)
         {
             if (_scrollChatPending)
@@ -2557,7 +2597,22 @@ else
         }
     }
 
-    private void OpenInstallDialog() => _showInstallDialog = true;
+    private void OpenInstallDialog()
+    {
+        var baseLink = $"onda://sala/{Uri.EscapeDataString(Code)}";
+        _desktopHandoffUrl = baseLink;
+
+        if (ShowDesktopInstallOption)
+        {
+            var handoff = Rooms.CreateHandoffToken(Code, Guest.Id);
+            if (handoff.Success && !string.IsNullOrWhiteSpace(handoff.Token))
+            {
+                _desktopHandoffUrl = $"{baseLink}?handoff={Uri.EscapeDataString(handoff.Token)}";
+            }
+        }
+
+        _showInstallDialog = true;
+    }
 
     private void CloseInstallDialog() => _showInstallDialog = false;
 

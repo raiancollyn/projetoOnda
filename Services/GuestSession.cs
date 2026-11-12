@@ -18,7 +18,17 @@ public sealed class GuestSession
 
     public string Id { get; }
     public string Name { get; private set; }
-    public int AvatarTone { get; }
+    public int AvatarTone { get; private set; }
+
+    public void RestoreHandoffIdentity(string name, int avatarTone)
+    {
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            Name = name.Trim();
+        }
+
+        AvatarTone = Math.Clamp(avatarTone, 0, AvatarToneCount - 1);
+    }
 
     public bool TrySetName(string? rawName, out string? error)
     {
