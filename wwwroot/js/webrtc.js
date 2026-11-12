@@ -28,6 +28,13 @@ const DEFAULT_SCREEN_QUALITY = Object.freeze({
     contentMode: "detail"
 });
 
+const DEFAULT_CAMERA_QUALITY = Object.freeze({
+    height: 720,
+    width: 1280,
+    frameRate: 30,
+    bitrateKbps: 1500
+});
+
 const ICE_CONFIG = {
     iceServers: [
         {
@@ -58,6 +65,7 @@ let pageHideHandler = null;
 let gestureHandler = null;
 let micAcquirePromise = null;
 let screenQuality = { ...DEFAULT_SCREEN_QUALITY };
+let cameraQuality = { ...DEFAULT_CAMERA_QUALITY };
 let peerConnectionConfig = ICE_CONFIG;
 
 const peers = new Map();
@@ -121,6 +129,7 @@ export function initialize(ref, room, guestId, config = {}) {
     roomId = room || "";
     selfId = guestId || "";
     screenQuality = normalizeScreenQuality(config?.quality);
+    cameraQuality = normalizeCameraQuality(config?.cameraQuality);
     peerConnectionConfig = buildPeerConnectionConfig(config?.iceServers);
     local = createLocalState();
     initialized = true;
@@ -656,8 +665,12 @@ async function startCameraWithConstraints(videoConstraints = {}) {
     local.cameraBusy = true;
     try {
         const constraints = {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            width: { ideal: cameraQuality.width },
+            height: { ideal: cameraQuality.height },
+            frameRate: {
+                ideal: cameraQuality.frameRate,
+                max: cameraQuality.frameRate
+            },
             ...videoConstraints
         };
         if (!constraints.deviceId && !constraints.facingMode) {
@@ -1083,15 +1096,31 @@ function normalizeScreenQuality(value) {
     const codec = String(input.codec || "auto").toLowerCase();
     const contentMode = String(input.contentMode || "detail").toLowerCase();
 
-    const normalizedHeight = [720, 1080, 1440].includes(height) ? height : 1080;
+    const normalizedHeight = [720, 1080, 1440, 2160].includes(height) ? height : 1080;
     return {
         preset: typeof input.preset === "string" ? input.preset : "custom",
         height: normalizedHeight,
         width: width > 0 ? Math.round(width) : Math.round(normalizedHeight * 16 / 9 / 2) * 2,
-        frameRate: [15, 24, 30, 60].includes(frameRate) ? frameRate : 30,
+        frameRate: frameRate >= 10 && frameRate <= 60 ? Math.round(frameRate) : 30,
         bitrateKbps: Math.min(20000, Math.max(800, Number.isFinite(bitrateKbps) ? bitrateKbps : 5000)),
         codec: ["vp8", "vp9", "h264", "av1"].includes(codec) ? codec : "auto",
         contentMode: contentMode === "motion" ? "motion" : "detail"
+    };
+}
+
+function normalizeCameraQuality(value) {
+    const input = value && typeof value === "object" ? value : {};
+    const height = Number(input.height);
+    const frameRate = Number(input.frameRate);
+    const bitrateKbps = Number(input.bitrateKbps);
+    const width = Number(input.width);
+    const normalizedHeight = [480, 720, 1080, 1440, 2160].includes(height) ? height : 720;
+
+    return {
+        height: normalizedHeight,
+        width: width > 0 ? Math.round(width) : Math.round(normalizedHeight * 16 / 9 / 2) * 2,
+        frameRate: frameRate >= 10 && frameRate <= 60 ? Math.round(frameRate) : 30,
+        bitrateKbps: Math.min(12000, Math.max(300, Number.isFinite(bitrateKbps) ? bitrateKbps : 1500))
     };
 }
 
@@ -1198,8 +1227,93 @@ async function applyScreenQualityToPeers() {
 
 async function applyCameraQualityToPeers() {
     for (const peer of peers.values()) {
-        await applyVideoSenderParameters(peer, 1500, 30, "balanced");
+        await applyVideoSenderParameters(
+            peer,
+            cameraQuality.bitrateKbps,
+            cameraQuality.frameRate,
+            "balanced"
+        );
     }
+}
+
+function cameraCapabilitiesFromTrack(track) {
+    if (!track) {
+        return null;
+    }
+
+    const settings = track.getSettings?.() || {};
+    const capabilities = track.getCapabilities?.() || {};
+    const width = Number(settings.width) || 0;
+    const height = Number(settings.height) || 0;
+    const frameRate = Number(settings.frameRate) || 0;
+
+    return {
+        maxWidth: Number(capabilities.width?.max) || width || 1280,
+        maxHeight: Number(capabilities.height?.max) || height || 720,
+        maxFrameRate: Number(capabilities.frameRate?.max) || frameRate || 30,
+        width,
+        height,
+        frameRate,
+        estimated: false
+    };
+}
+
+export function getCameraCapabilities() {
+    return cameraCapabilitiesFromTrack(local.cameraTrack);
+}
+
+export function getScreenCapabilities() {
+    const track = local.screenVideoTrack;
+    if (track) {
+        const settings = track.getSettings?.() || {};
+        const capabilities = track.getCapabilities?.() || {};
+        return {
+            maxWidth: Number(capabilities.width?.max) || Number(settings.width) || 0,
+            maxHeight: Number(capabilities.height?.max) || Number(settings.height) || 0,
+            maxFrameRate: Math.max(60, Number(capabilities.frameRate?.max) || 0),
+            width: Number(settings.width) || 0,
+            height: Number(settings.height) || 0,
+            frameRate: Number(settings.frameRate) || 0,
+            estimated: false
+        };
+    }
+
+    const dpr = window.devicePixelRatio || 1;
+    const width = Math.round((window.screen?.width || 1920) * dpr);
+    const height = Math.round((window.screen?.height || 1080) * dpr);
+    return {
+        maxWidth: width,
+        maxHeight: height,
+        maxFrameRate: 60,
+        width,
+        height,
+        frameRate: 60,
+        estimated: true
+    };
+}
+
+export async function setCameraQuality(nextQuality) {
+    cameraQuality = normalizeCameraQuality(nextQuality);
+
+    if (!initialized || !local.cameraOn || !local.cameraTrack) {
+        return false;
+    }
+
+    try {
+        await local.cameraTrack.applyConstraints({
+            width: { ideal: cameraQuality.width },
+            height: { ideal: cameraQuality.height },
+            frameRate: {
+                ideal: cameraQuality.frameRate,
+                max: cameraQuality.frameRate
+            }
+        });
+    } catch (error) {
+        console.warn("Onda: camera constraints could not be updated live", error);
+    }
+
+    await applyCameraQualityToPeers();
+    return true;
 }
 
 export async function setScreenQuality(nextQuality) {

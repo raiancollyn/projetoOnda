@@ -120,8 +120,8 @@ public sealed class ScreenShareQuality
 
     public ScreenShareQuality Normalize()
     {
-        Height = Height is 720 or 1080 or 1440 ? Height : 1080;
-        FrameRate = FrameRate is 15 or 24 or 30 or 60 ? FrameRate : 30;
+        Height = Height is 720 or 1080 or 1440 or 2160 ? Height : 1080;
+        FrameRate = FrameRate is >= 10 and <= 60 ? FrameRate : 30;
         BitrateKbps = Math.Clamp(BitrateKbps, 800, 20_000);
         Codec = Codec?.Trim().ToLowerInvariant() switch
         {

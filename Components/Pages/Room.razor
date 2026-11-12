@@ -218,8 +218,8 @@ else
                     </button>
                 }
                 <button type="button" class="room-header-button" @onclick="OpenQualityDialog"
-                        aria-label="Ajustes de qualidade da transmissão"
-                        title="@($"Qualidade da transmissão: {_screenQuality.Summary}")">
+                        aria-label="Ajustes de qualidade de tela e câmera"
+                        title="@($"Qualidade — tela: {_screenQuality.Summary}; câmera: {_cameraQuality.Summary}")">
                     <Icon Name="sliders" Size="16" />
                     <span class="header-button-label">Qualidade</span>
                 </button>
@@ -958,153 +958,249 @@ else
 </Modal>
 
 <Modal IsOpen="_showQualityDialog"
-       Title="Qualidade da transmissão"
+       Title="Qualidade de tela e câmera"
        Eyebrow="VÍDEO & TELA"
        Wide="true"
        OnClose="CloseQualityDialog">
     <div class="quality-form">
-        <div class="quality-mode">
-            <span class="quality-mode-icon"><Icon Name="@(_isSfu ? "server" : "monitor")" Size="19" /></span>
-            <div class="quality-mode-copy">
-                <strong>@(_isSfu ? "SFU · LiveKit" : "P2P · conexão direta")</strong>
-                <span>@(_isSfu ? "Mídia roteada pelo servidor, pronta para salas maiores." : "Cada participante envia para os demais. Ideal para salas menores.")</span>
-            </div>
-            <span class="quality-capacity">@Rooms.MaxParticipantsPerRoom pessoas</span>
-        </div>
-
-        <div class="quality-presets" role="group" aria-label="Presets de qualidade">
+        <div class="quality-tabs" role="tablist" aria-label="Tipo de transmissão">
             <button type="button"
-                    class="quality-preset @(_qualityDraft.Preset == ScreenShareQuality.PresetFluid ? "is-selected" : null)"
-                    aria-pressed="@(_qualityDraft.Preset == ScreenShareQuality.PresetFluid ? "true" : "false")"
-                    @onclick="() => ApplyQualityPreset(ScreenShareQuality.PresetFluid)">
-                <span class="quality-preset-name">Fluida</span>
-                <span>720p · 60 fps</span>
-                <small>movimento</small>
+                    role="tab"
+                    aria-selected="@(_qualityTab == "screen" ? "true" : "false")"
+                    class="@(_qualityTab == "screen" ? "is-active" : null)"
+                    @onclick='() => SetQualityTab("screen")'>
+                <Icon Name="screen" Size="16" /> Tela
             </button>
             <button type="button"
-                    class="quality-preset @(_qualityDraft.Preset == ScreenShareQuality.PresetBalanced ? "is-selected" : null)"
-                    aria-pressed="@(_qualityDraft.Preset == ScreenShareQuality.PresetBalanced ? "true" : "false")"
-                    @onclick="() => ApplyQualityPreset(ScreenShareQuality.PresetBalanced)">
-                <span class="quality-preset-name">Equilibrada</span>
-                <span>1080p · 30 fps</span>
-                <small>recomendada</small>
-            </button>
-            <button type="button"
-                    class="quality-preset @(_qualityDraft.Preset == ScreenShareQuality.PresetSharp ? "is-selected" : null)"
-                    aria-pressed="@(_qualityDraft.Preset == ScreenShareQuality.PresetSharp ? "true" : "false")"
-                    @onclick="() => ApplyQualityPreset(ScreenShareQuality.PresetSharp)">
-                <span class="quality-preset-name">Nítida</span>
-                <span>1440p · 30 fps</span>
-                <small>texto e detalhe</small>
-            </button>
-            <button type="button"
-                    class="quality-preset @(_qualityDraft.Preset == ScreenShareQuality.PresetCustom ? "is-selected" : null)"
-                    aria-pressed="@(_qualityDraft.Preset == ScreenShareQuality.PresetCustom ? "true" : "false")"
-                    @onclick="MarkQualityCustom">
-                <span class="quality-preset-name">Personalizada</span>
-                <span>Ajuste fino</span>
-                <small>do seu jeito</small>
+                    role="tab"
+                    aria-selected="@(_qualityTab == "camera" ? "true" : "false")"
+                    class="@(_qualityTab == "camera" ? "is-active" : null)"
+                    @onclick='() => SetQualityTab("camera")'>
+                <Icon Name="camera" Size="16" /> Câmera
             </button>
         </div>
 
-        <div class="quality-grid">
-            <label class="field">
-                <span class="field-label">Resolução</span>
-                <select class="text-input" @bind="_qualityDraft.Height" @bind:after="MarkQualityCustom">
-                    <option value="720">720p · HD</option>
-                    <option value="1080">1080p · Full HD</option>
-                    <option value="1440">1440p · Quad HD</option>
-                </select>
-            </label>
-
-            <label class="field">
-                <span class="field-label">Taxa de quadros</span>
-                <select class="text-input" @bind="_qualityDraft.FrameRate" @bind:after="MarkQualityCustom">
-                    <option value="15">15 fps · econômica</option>
-                    <option value="24">24 fps · cinema</option>
-                    <option value="30">30 fps · equilibrada</option>
-                    <option value="60">60 fps · fluida</option>
-                </select>
-            </label>
-        </div>
-
-        <label class="field quality-bitrate">
-            <span class="quality-label-row">
-                <span class="field-label">Taxa de bits</span>
-                <strong>@((_qualityDraft.BitrateKbps / 1000d).ToString("0.#")) Mbps</strong>
-            </span>
-            <input type="range"
-                   min="1000"
-                   max="20000"
-                   step="500"
-                   value="@_qualityDraft.BitrateKbps"
-                   @oninput="OnQualityBitrateInput"
-                   aria-label="Taxa de bits do compartilhamento de tela" />
-            <span class="quality-scale"><span>1 Mbps</span><span>Mais nitidez</span><span>20 Mbps</span></span>
-        </label>
-
-        <div class="quality-grid">
-            <label class="field">
-                <span class="field-label">Codec preferido</span>
-                <select class="text-input" @bind="_qualityDraft.Codec" @bind:after="MarkQualityCustom">
-                    <option value="auto">Automático</option>
-                    <option value="vp8">VP8</option>
-                    <option value="vp9">VP9</option>
-                    <option value="h264">H.264</option>
-                    <option value="av1">AV1</option>
-                </select>
-            </label>
-
-            <label class="field">
-                <span class="field-label">Priorizar</span>
-                <select class="text-input" @bind="_qualityDraft.ContentMode" @bind:after="MarkQualityCustom">
-                    <option value="detail">Texto e nitidez</option>
-                    <option value="motion">Movimento e fluidez</option>
-                </select>
-            </label>
-        </div>
-
-        @if (_isFirefox)
+        @if (_qualityTab == "screen")
         {
-            <div class="quality-browser-warning" role="note">
-                <Icon Name="alert" Size="17" />
-                <span>
-                    <strong>Firefox:</strong> o navegador não captura o áudio da tela.
-                    Use Chrome ou Edge para compartilhar som; o microfone continua funcionando.
-                </span>
+            <div class="quality-mode">
+                <span class="quality-mode-icon"><Icon Name="@(_isSfu ? "server" : "monitor")" Size="19" /></span>
+                <div class="quality-mode-copy">
+                    <strong>@(_isSfu ? "SFU · LiveKit" : "P2P · conexão direta")</strong>
+                    <span>@(_isSfu ? "Mídia roteada pelo servidor, pronta para salas maiores." : "Cada participante envia para os demais. Ideal para salas menores.")</span>
+                </div>
+                <span class="quality-capacity">@Rooms.MaxParticipantsPerRoom pessoas</span>
             </div>
-        }
 
-        <p class="quality-note">
-            <Icon Name="alert" Size="15" />
-            <span>
-                @if (_localScreenOn)
-                {
-                    <text>As alterações são aplicadas à transmissão atual.</text>
-                    @if (_isSfu)
+            <p class="quality-capability-note">
+                <Icon Name="monitor" Size="15" />
+                <span>@ScreenCapabilitiesText</span>
+            </p>
+
+            <div class="quality-presets" role="group" aria-label="Presets de qualidade da tela">
+                <button type="button"
+                        class="quality-preset @(_qualityDraft.Preset == ScreenShareQuality.PresetFluid ? "is-selected" : null)"
+                        aria-pressed="@(_qualityDraft.Preset == ScreenShareQuality.PresetFluid ? "true" : "false")"
+                        disabled="@(!IsScreenPresetAvailable(ScreenShareQuality.PresetFluid))"
+                        @onclick="() => ApplyQualityPreset(ScreenShareQuality.PresetFluid)">
+                    <span class="quality-preset-name">Fluida</span>
+                    <span>720p · 60 fps</span>
+                    <small>movimento</small>
+                </button>
+                <button type="button"
+                        class="quality-preset @(_qualityDraft.Preset == ScreenShareQuality.PresetBalanced ? "is-selected" : null)"
+                        aria-pressed="@(_qualityDraft.Preset == ScreenShareQuality.PresetBalanced ? "true" : "false")"
+                        disabled="@(!IsScreenPresetAvailable(ScreenShareQuality.PresetBalanced))"
+                        @onclick="() => ApplyQualityPreset(ScreenShareQuality.PresetBalanced)">
+                    <span class="quality-preset-name">Equilibrada</span>
+                    <span>1080p · 30 fps</span>
+                    <small>recomendada</small>
+                </button>
+                <button type="button"
+                        class="quality-preset @(_qualityDraft.Preset == ScreenShareQuality.PresetSharp ? "is-selected" : null)"
+                        aria-pressed="@(_qualityDraft.Preset == ScreenShareQuality.PresetSharp ? "true" : "false")"
+                        disabled="@(!IsScreenPresetAvailable(ScreenShareQuality.PresetSharp))"
+                        @onclick="() => ApplyQualityPreset(ScreenShareQuality.PresetSharp)">
+                    <span class="quality-preset-name">Nítida</span>
+                    <span>1440p · 30 fps</span>
+                    <small>texto e detalhe</small>
+                </button>
+                <button type="button"
+                        class="quality-preset @(_qualityDraft.Preset == ScreenShareQuality.PresetCustom ? "is-selected" : null)"
+                        aria-pressed="@(_qualityDraft.Preset == ScreenShareQuality.PresetCustom ? "true" : "false")"
+                        @onclick="MarkQualityCustom">
+                    <span class="quality-preset-name">Personalizada</span>
+                    <span>Ajuste fino</span>
+                    <small>do seu jeito</small>
+                </button>
+            </div>
+
+            <div class="quality-grid">
+                <label class="field">
+                    <span class="field-label">Resolução</span>
+                    <select class="text-input" @bind="_qualityDraft.Height" @bind:after="MarkQualityCustom">
+                        @foreach (var height in ScreenHeightOptions)
+                        {
+                            <option value="@height">@height p</option>
+                        }
+                    </select>
+                </label>
+
+                <label class="field">
+                    <span class="field-label">Taxa de quadros</span>
+                    <select class="text-input" @bind="_qualityDraft.FrameRate" @bind:after="MarkQualityCustom">
+                        @foreach (var frameRate in ScreenFrameRateOptions)
+                        {
+                            <option value="@frameRate">@frameRate fps</option>
+                        }
+                    </select>
+                </label>
+            </div>
+
+            <label class="field quality-bitrate">
+                <span class="quality-label-row">
+                    <span class="field-label">Taxa de bits</span>
+                    <strong>@((_qualityDraft.BitrateKbps / 1000d).ToString("0.#")) Mbps</strong>
+                </span>
+                <input type="range"
+                       min="1000"
+                       max="20000"
+                       step="500"
+                       value="@_qualityDraft.BitrateKbps"
+                       @oninput="OnQualityBitrateInput"
+                       aria-label="Taxa de bits do compartilhamento de tela" />
+                <span class="quality-scale"><span>1 Mbps</span><span>Mais nitidez</span><span>20 Mbps</span></span>
+            </label>
+
+            <div class="quality-grid">
+                <label class="field">
+                    <span class="field-label">Codec preferido</span>
+                    <select class="text-input" @bind="_qualityDraft.Codec" @bind:after="MarkQualityCustom">
+                        <option value="auto">Automático</option>
+                        <option value="vp8">VP8</option>
+                        <option value="vp9">VP9</option>
+                        <option value="h264">H.264</option>
+                        <option value="av1">AV1</option>
+                    </select>
+                </label>
+
+                <label class="field">
+                    <span class="field-label">Priorizar</span>
+                    <select class="text-input" @bind="_qualityDraft.ContentMode" @bind:after="MarkQualityCustom">
+                        <option value="detail">Texto e nitidez</option>
+                        <option value="motion">Movimento e fluidez</option>
+                    </select>
+                </label>
+            </div>
+
+            @if (_isFirefox)
+            {
+                <div class="quality-browser-warning" role="note">
+                    <Icon Name="alert" Size="17" />
+                    <span>
+                        <strong>Firefox:</strong> o navegador não captura o áudio da tela.
+                        Use Chrome ou Edge para compartilhar som; o microfone continua funcionando.
+                    </span>
+                </div>
+            }
+
+            <p class="quality-note">
+                <Icon Name="alert" Size="15" />
+                <span>
+                    @if (_localScreenOn)
                     {
-                        <text> Resolução, FPS, bitrate e prioridade são aplicados agora; o codec será usado no próximo compartilhamento.</text>
+                        <text>As alterações são aplicadas à transmissão atual.</text>
+                        @if (_isSfu)
+                        {
+                            <text> Resolução, FPS, bitrate e prioridade são aplicados agora; o codec será usado no próximo compartilhamento.</text>
+                        }
+                        else
+                        {
+                            <text> No P2P, resolução, FPS e bitrate são aplicados agora; o codec só muda ao entrar novamente.</text>
+                        }
                     }
                     else
                     {
-                        <text> No P2P, resolução, FPS e bitrate são aplicados agora; o codec só muda ao entrar novamente.</text>
+                        <text>Resolução, FPS e bitrate são aplicados ao próximo compartilhamento de tela.</text>
+                        @if (_isSfu)
+                        {
+                            <text> O codec escolhido também vale para o próximo compartilhamento.</text>
+                        }
+                        else
+                        {
+                            <text> No modo P2P, o codec é negociado ao entrar na sala; para trocá-lo, entre novamente após salvar.</text>
+                        }
                     }
-                }
-                else
-                {
-                    <text>Resolução, FPS e bitrate são aplicados ao próximo compartilhamento de tela.</text>
-                    @if (_isSfu)
+                    A disponibilidade depende do navegador e do servidor; pode haver fallback.
+                </span>
+            </p>
+        }
+        else
+        {
+            <div class="quality-mode quality-camera-mode">
+                <span class="quality-mode-icon"><Icon Name="camera" Size="19" /></span>
+                <div class="quality-mode-copy">
+                    <strong>Câmera</strong>
+                    <span>Perfil separado do compartilhamento de tela. A câmera e a tela têm limites próprios.</span>
+                </div>
+            </div>
+
+            <p class="quality-capability-note">
+                <Icon Name="camera" Size="15" />
+                <span>@CameraCapabilitiesText</span>
+            </p>
+
+            <div class="quality-grid">
+                <label class="field">
+                    <span class="field-label">Resolução</span>
+                    <select class="text-input" @bind="_cameraQualityDraft.Height">
+                        @foreach (var height in CameraHeightOptions)
+                        {
+                            <option value="@height">@height p</option>
+                        }
+                    </select>
+                </label>
+
+                <label class="field">
+                    <span class="field-label">Taxa de quadros</span>
+                    <select class="text-input" @bind="_cameraQualityDraft.FrameRate">
+                        @foreach (var frameRate in CameraFrameRateOptions)
+                        {
+                            <option value="@frameRate">@frameRate fps</option>
+                        }
+                    </select>
+                </label>
+            </div>
+
+            <label class="field quality-bitrate">
+                <span class="quality-label-row">
+                    <span class="field-label">Taxa de bits da câmera</span>
+                    <strong>@((_cameraQualityDraft.BitrateKbps / 1000d).ToString("0.#")) Mbps</strong>
+                </span>
+                <input type="range"
+                       min="300"
+                       max="12000"
+                       step="100"
+                       value="@_cameraQualityDraft.BitrateKbps"
+                       @oninput="OnCameraBitrateInput"
+                       aria-label="Taxa de bits da câmera" />
+                <span class="quality-scale"><span>0,3 Mbps</span><span>Mais nitidez</span><span>12 Mbps</span></span>
+            </label>
+
+            <p class="quality-note">
+                <Icon Name="alert" Size="15" />
+                <span>
+                    @if (_localCameraOn)
                     {
-                        <text> O codec escolhido também vale para o próximo compartilhamento.</text>
+                        <text>As alterações são aplicadas à câmera atual sem encerrar a chamada.</text>
                     }
                     else
                     {
-                        <text> No modo P2P, o codec é negociado ao entrar na sala; para trocá-lo, entre novamente após salvar.</text>
+                        <text>As alterações valem para a próxima vez que você ligar a câmera.</text>
                     }
-                }
-                A disponibilidade depende do navegador e do servidor; pode haver fallback.
-            </span>
-        </p>
+                    A câmera pode entregar menos que o máximo teórico; o navegador faz o ajuste.
+                </span>
+            </p>
+        }
 
         <div class="modal-actions quality-actions">
             <button type="button" class="quality-reset" @onclick="ResetQualityDefaults">
@@ -1200,6 +1296,13 @@ else
     private bool _installMobile;
     private ScreenShareQuality _screenQuality = ScreenShareQuality.ForPreset(ScreenShareQuality.PresetBalanced);
     private ScreenShareQuality _qualityDraft = ScreenShareQuality.ForPreset(ScreenShareQuality.PresetBalanced);
+    private CameraQuality _cameraQuality = new();
+    private CameraQuality _cameraQualityDraft = new();
+    private bool _cameraQualityLoaded;
+    private string _qualityTab = "screen";
+    private TrackCapabilitiesView? _screenCapabilities;
+    private TrackCapabilitiesView? _cameraCapabilities;
+    private bool _capabilitiesLoading;
     private bool _isSfu;
     private bool _qualityLoaded;
 
@@ -1207,6 +1310,57 @@ else
 
     private IReadOnlyList<ParticipantView> Shares =>
         _room?.Participants.Where(p => p.CameraOn || p.ScreenOn).ToArray() ?? [];
+
+    private IReadOnlyList<int> ScreenHeightOptions =>
+        BuildHeightOptions([720, 1080, 1440, 2160], _screenCapabilities?.MaxHeight);
+
+    private IReadOnlyList<int> ScreenFrameRateOptions =>
+        BuildFrameRateOptions(_screenCapabilities?.MaxFrameRate);
+
+    private IReadOnlyList<int> CameraHeightOptions =>
+        BuildHeightOptions([480, 720, 1080, 1440, 2160], _cameraCapabilities?.MaxHeight);
+
+    private IReadOnlyList<int> CameraFrameRateOptions =>
+        BuildFrameRateOptions(_cameraCapabilities?.MaxFrameRate);
+
+    private string ScreenCapabilitiesText
+    {
+        get
+        {
+            if (_capabilitiesLoading)
+            {
+                return "Detectando os limites da tela...";
+            }
+
+            if (_screenCapabilities is null)
+            {
+                return "Compartilhe a tela para detectar os limites reais.";
+            }
+
+            var prefix = _screenCapabilities.Estimated
+                ? "Limite estimado"
+                : "Tela atual";
+            return $"{prefix}: {_screenCapabilities.Width}×{_screenCapabilities.Height} · até {Math.Round(_screenCapabilities.MaxFrameRate)} fps";
+        }
+    }
+
+    private string CameraCapabilitiesText
+    {
+        get
+        {
+            if (_capabilitiesLoading)
+            {
+                return "Detectando os limites da câmera...";
+            }
+
+            if (_cameraCapabilities is null)
+            {
+                return "Ligue a câmera para detectar os limites reais.";
+            }
+
+            return $"Câmera: até {_cameraCapabilities.MaxWidth}×{_cameraCapabilities.MaxHeight} · {Math.Round(_cameraCapabilities.MaxFrameRate)} fps";
+        }
+    }
 
     private ParticipantView? RemoteScreenAudioPeer
     {
@@ -1401,6 +1555,13 @@ else
                 _qualityLoaded = true;
             }
 
+            if (!_cameraQualityLoaded)
+            {
+                _cameraQuality = await LoadCameraQualityAsync();
+                _cameraQualityDraft = _cameraQuality.Clone();
+                _cameraQualityLoaded = true;
+            }
+
             var useLiveKit = MediaSettings.EffectiveProvider == MediaOptions.LiveKitProvider;
             string? livekitUrl = null;
             string? livekitToken = null;
@@ -1442,7 +1603,8 @@ else
                         credential = server.Credential
                     })
                     .ToArray(),
-                quality = ToJsQuality(_screenQuality)
+                quality = ToJsQuality(_screenQuality),
+                cameraQuality = ToJsCameraQuality(_cameraQuality)
             };
 
             var moduleFile = useLiveKit ? "livekit-room.js" : "webrtc.js";
@@ -1487,6 +1649,28 @@ else
         return ScreenShareQuality.ForPreset(ScreenShareQuality.PresetBalanced);
     }
 
+    private async Task<CameraQuality> LoadCameraQualityAsync()
+    {
+        try
+        {
+            var json = await JS.InvokeAsync<string>("onda.readCameraQuality");
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                var loaded = JsonSerializer.Deserialize<CameraQuality>(json, QualityJsonOptions);
+                if (loaded is not null)
+                {
+                    return loaded.Normalize();
+                }
+            }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or JsonException)
+        {
+            // Preferences are optional.
+        }
+
+        return new CameraQuality().Normalize();
+    }
+
     private object ToJsQuality(ScreenShareQuality quality) => new
     {
         preset = quality.Preset,
@@ -1497,6 +1681,72 @@ else
         codec = quality.Codec,
         contentMode = quality.ContentMode
     };
+
+    private object ToJsCameraQuality(CameraQuality quality) => new
+    {
+        height = quality.Height,
+        width = quality.Width,
+        frameRate = quality.FrameRate,
+        bitrateKbps = quality.BitrateKbps
+    };
+
+    private static IReadOnlyList<int> BuildHeightOptions(
+        IReadOnlyList<int> defaults,
+        double? maxHeight)
+    {
+        var options = defaults
+            .Where(height => !maxHeight.HasValue || height <= Math.Max(480, maxHeight.Value))
+            .ToList();
+
+        if (options.Count == 0)
+        {
+            options.Add(defaults[0]);
+        }
+
+        return options;
+    }
+
+    private static IReadOnlyList<int> BuildFrameRateOptions(double? maxFrameRate)
+    {
+        var limit = maxFrameRate.HasValue ? Math.Max(15, Math.Floor(maxFrameRate.Value)) : 60;
+        var options = new List<int> { 15, 24, 30, 60 }
+            .Where(frameRate => frameRate <= limit)
+            .ToList();
+
+        var detected = (int)limit;
+        if (detected >= 15 && !options.Contains(detected))
+        {
+            options.Add(detected);
+            options.Sort();
+        }
+
+        if (options.Count == 0)
+        {
+            options.Add(15);
+        }
+
+        return options;
+    }
+
+    private static int ClampHeight(int value, IReadOnlyList<int> options, int fallback)
+    {
+        if (options.Contains(value))
+        {
+            return value;
+        }
+
+        return options.LastOrDefault() > 0 ? options.Last() : fallback;
+    }
+
+    private static int ClampFrameRate(int value, IReadOnlyList<int> options, int fallback)
+    {
+        if (options.Contains(value))
+        {
+            return value;
+        }
+
+        return options.LastOrDefault() > 0 ? options.Last() : fallback;
+    }
 
     private async Task ReconcilePeersAsync()
     {
@@ -2597,10 +2847,86 @@ else
         _showNameDialog = true;
     }
 
-    private void OpenQualityDialog()
+    private async Task OpenQualityDialog()
     {
         _qualityDraft = _screenQuality.Clone();
+        _cameraQualityDraft = _cameraQuality.Clone();
+        _qualityTab = "screen";
         _showQualityDialog = true;
+        await DetectCapabilitiesAsync();
+    }
+
+    private async Task DetectCapabilitiesAsync()
+    {
+        if (_jsModule is null)
+        {
+            return;
+        }
+
+        _capabilitiesLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            _screenCapabilities = await _jsModule.InvokeAsync<TrackCapabilitiesView>("getScreenCapabilities");
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            _screenCapabilities = null;
+        }
+
+        try
+        {
+            _cameraCapabilities = await _jsModule.InvokeAsync<TrackCapabilitiesView>("getCameraCapabilities");
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            _cameraCapabilities = null;
+        }
+
+        if (_screenCapabilities is not null)
+        {
+            _qualityDraft.Height = ClampHeight(
+                _qualityDraft.Height,
+                ScreenHeightOptions,
+                720);
+            _qualityDraft.FrameRate = ClampFrameRate(
+                _qualityDraft.FrameRate,
+                ScreenFrameRateOptions,
+                30);
+        }
+
+        if (_cameraCapabilities is not null)
+        {
+            _cameraQualityDraft.Height = ClampHeight(
+                _cameraQualityDraft.Height,
+                CameraHeightOptions,
+                720);
+            _cameraQualityDraft.FrameRate = ClampFrameRate(
+                _cameraQualityDraft.FrameRate,
+                CameraFrameRateOptions,
+                30);
+        }
+
+        _capabilitiesLoading = false;
+        StateHasChanged();
+    }
+
+    private void SetQualityTab(string tab)
+    {
+        _qualityTab = tab == "camera" ? "camera" : "screen";
+    }
+
+    private bool IsScreenPresetAvailable(string preset)
+    {
+        if (_screenCapabilities is null)
+        {
+            return true;
+        }
+
+        var quality = ScreenShareQuality.ForPreset(preset);
+        return quality.Height <= _screenCapabilities.MaxHeight &&
+            quality.FrameRate <= _screenCapabilities.MaxFrameRate;
     }
 
     private void CloseQualityDialog() => _showQualityDialog = false;
@@ -2618,6 +2944,7 @@ else
     private void ResetQualityDefaults()
     {
         _qualityDraft = ScreenShareQuality.ForPreset(ScreenShareQuality.PresetBalanced);
+        _cameraQualityDraft = new CameraQuality().Normalize();
     }
 
     private void OnQualityBitrateInput(ChangeEventArgs args)
@@ -2629,62 +2956,94 @@ else
         }
     }
 
+    private void OnCameraBitrateInput(ChangeEventArgs args)
+    {
+        if (int.TryParse(args.Value?.ToString(), out var bitrate))
+        {
+            _cameraQualityDraft.BitrateKbps = Math.Clamp(bitrate, 300, 12_000);
+        }
+    }
+
     private async Task SaveQualityAsync()
     {
         var previousCodec = _screenQuality.Codec;
         _screenQuality = _qualityDraft.Clone().Normalize();
+        _cameraQuality = _cameraQualityDraft.Clone().Normalize();
         var codecChanged = !string.Equals(previousCodec, _screenQuality.Codec, StringComparison.OrdinalIgnoreCase);
         _qualityDraft = _screenQuality.Clone();
+        _cameraQualityDraft = _cameraQuality.Clone();
         _showQualityDialog = false;
 
         try
         {
-            var json = JsonSerializer.Serialize(_screenQuality, QualityJsonOptions);
-            await JS.InvokeAsync<bool>("onda.saveScreenQuality", json);
+            var screenJson = JsonSerializer.Serialize(_screenQuality, QualityJsonOptions);
+            var cameraJson = JsonSerializer.Serialize(_cameraQuality, QualityJsonOptions);
+            await JS.InvokeAsync<bool>("onda.saveScreenQuality", screenJson);
+            await JS.InvokeAsync<bool>("onda.saveCameraQuality", cameraJson);
         }
         catch (Exception ex) when (ex is JSException or JSDisconnectedException)
         {
             // The current session still keeps the values in memory.
         }
 
+        var screenApplied = false;
+        var cameraApplied = false;
+        var failed = false;
+
         if (_jsModule is not null)
         {
             try
             {
-                var appliedToActiveShare = await _jsModule.InvokeAsync<bool>(
+                screenApplied = await _jsModule.InvokeAsync<bool>(
                     "setScreenQuality",
                     ToJsQuality(_screenQuality));
-
-                if (_localScreenOn)
-                {
-                    if (appliedToActiveShare)
-                    {
-                        Toasts.Show(
-                            codecChanged
-                                ? (_isSfu
-                                    ? "Ajustes aplicados à transmissão atual. O novo codec será usado no próximo compartilhamento."
-                                    : "Ajustes aplicados à transmissão atual. O novo codec será usado quando você entrar novamente na sala.")
-                                : "Ajustes aplicados à transmissão atual.",
-                            ToastKind.Success);
-                    }
-                    else
-                    {
-                        Toasts.Show(
-                            "Os ajustes foram salvos, mas não puderam ser aplicados à transmissão atual.",
-                            ToastKind.Error);
-                    }
-
-                    return;
-                }
             }
             catch (Exception ex) when (ex is JSException or JSDisconnectedException)
             {
-                Toasts.Show("As preferências foram salvas, mas não puderam ser aplicadas agora.", ToastKind.Error);
-                return;
+                failed = true;
+            }
+
+            try
+            {
+                cameraApplied = await _jsModule.InvokeAsync<bool>(
+                    "setCameraQuality",
+                    ToJsCameraQuality(_cameraQuality));
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                failed = true;
             }
         }
 
-        Toasts.Show("Ajustes de transmissão salvos para o próximo compartilhamento.", ToastKind.Success);
+        if (_localScreenOn || _localCameraOn)
+        {
+            var appliedAll = (!_localScreenOn || screenApplied) &&
+                (!_localCameraOn || cameraApplied) &&
+                !failed;
+
+            if (appliedAll)
+            {
+                var message = _localScreenOn && codecChanged
+                    ? (_isSfu
+                        ? "Ajustes aplicados à transmissão atual. O novo codec será usado no próximo compartilhamento."
+                        : "Ajustes aplicados à transmissão atual. O novo codec será usado quando você entrar novamente na sala.")
+                    : "Ajustes aplicados à transmissão atual.";
+
+                Toasts.Show(message, ToastKind.Success);
+            }
+            else
+            {
+                Toasts.Show(
+                    "As preferências foram salvas, mas não puderam ser aplicadas integralmente agora.",
+                    ToastKind.Error);
+            }
+
+            return;
+        }
+
+        Toasts.Show(
+            "Preferências de tela e câmera salvas para os próximos compartilhamentos.",
+            ToastKind.Success);
     }
 
     private void CloseNameDialog() => _showNameDialog = false;
@@ -2795,4 +3154,13 @@ else
         bool IsDesktopApp,
         bool IsStandalone,
         bool IsMobile);
+
+    private sealed record TrackCapabilitiesView(
+        int MaxWidth,
+        int MaxHeight,
+        double MaxFrameRate,
+        int Width,
+        int Height,
+        double FrameRate,
+        bool Estimated);
 }

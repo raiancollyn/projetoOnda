@@ -367,10 +367,19 @@
     }
 
     const screenQualityKey = "onda.screenQuality.v1";
+    const cameraQualityKey = "onda.cameraQuality.v1";
 
     function readScreenQuality() {
         try {
             return localStorage.getItem(screenQualityKey) || "";
+        } catch {
+            return "";
+        }
+    }
+
+    function readCameraQuality() {
+        try {
+            return localStorage.getItem(cameraQualityKey) || "";
         } catch {
             return "";
         }
@@ -388,6 +397,35 @@
         } catch {
             return false;
         }
+    }
+
+    function saveCameraQuality(json) {
+        if (typeof json !== "string" || json.length === 0) {
+            return false;
+        }
+
+        try {
+            JSON.parse(json);
+            localStorage.setItem(cameraQualityKey, json);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    function getScreenEstimate() {
+        const dpr = window.devicePixelRatio || 1;
+        const width = Math.round((window.screen?.width || 1920) * dpr);
+        const height = Math.round((window.screen?.height || 1080) * dpr);
+        return {
+            maxWidth: width,
+            maxHeight: height,
+            maxFrameRate: 60,
+            width,
+            height,
+            frameRate: 60,
+            estimated: true
+        };
     }
 
     async function shareLink(data) {
@@ -1417,6 +1455,9 @@
         reloadPage,
         readScreenQuality,
         saveScreenQuality,
+        readCameraQuality,
+        saveCameraQuality,
+        getScreenEstimate,
         toggleFullscreen,
         isFirefox,
         toggleTheme,

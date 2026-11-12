@@ -71,11 +71,13 @@ dotnet run --launch-profile sfu
 - **Volume individual**: sliders por participante para voz e áudio de tela, com mute; ao assistir à tela de outra pessoa, o volume e o mute do áudio da tela também ficam disponíveis no próprio palco.
 - **Qualidade do compartilhamento de tela**:
   - presets **Fluida**, **Equilibrada**, **Nítida** e **Personalizada**;
-  - resolução (720p, 1080p, 1440p);
-  - taxa de quadros (15, 24, 30, 60 fps);
+  - resolução (720p, 1080p, 1440p, 4K quando detectado);
+  - taxa de quadros (15, 24, 30, 60 fps ou o máximo detectado);
   - bitrate (1 a 20 Mbps);
   - codec preferido (Automático, VP8, VP9, H.264 ou AV1);
   - prioridade para texto/nitidez ou movimento/fluidez.
+- **Qualidade da câmera**: perfil separado, com resolução, FPS e bitrate próprios. Alterar a tela não muda a câmera.
+- **Detecção de limites**: a câmera informa `getCapabilities()` (resolução, FPS, lanterna e câmeras) depois da permissão; a tela usa uma estimativa antes da captura e os `getSettings()` reais depois que o usuário escolhe a fonte. As opções são filtradas pelo máximo detectado, com fallback quando o navegador não expõe as capacidades.
 - **Chat em tempo real**: histórico persistido em SQLite, mensagens de sistema, badge de não lidas, Enter para enviar e Shift+Enter para quebrar linha.
 - **Ciclo de vida da sala**: ao clicar em **Sair**, a última pessoa apaga a sala, a senha e todo o histórico. Se a aba for fechada ou recarregada, há uma janela curta de 30 s para reentrar; depois o janitor apaga tudo.
 - **Presença confiável**: heartbeat no servidor e saída imediata via beacon ao fechar a aba.

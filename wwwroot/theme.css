@@ -319,6 +319,21 @@ html[data-theme="dark"] .room-install-option-icon {
     color: var(--lime);
 }
 
+html[data-theme="dark"] .quality-tabs {
+    border-color: var(--line);
+    background: rgba(255, 255, 255, 0.055);
+}
+
+html[data-theme="dark"] .quality-tabs button.is-active {
+    background: var(--lime);
+    color: var(--ink);
+}
+
+html[data-theme="dark"] .quality-capability-note {
+    border-color: var(--line);
+    background: rgba(205, 242, 124, 0.08);
+}
+
 html[data-theme="dark"] .text-input::placeholder {
     color: var(--ink-muted);
 }
