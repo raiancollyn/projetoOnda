@@ -187,7 +187,7 @@ else if (!_joined)
 else
 {
     <div class="room-app">
-        <header class="room-header">
+        <header class="room-header @(ShowRoomInstallButton ? "has-install" : null)">
             <div class="room-header-left">
                 <Brand Light="true" />
                 <span class="room-header-divider" aria-hidden="true"></span>
@@ -206,6 +206,17 @@ else
             <div class="room-header-actions">
                 <span class="room-live-badge"><span class="live-dot"></span> ao vivo</span>
                 <ThemeToggle />
+                @if (ShowRoomInstallButton)
+                {
+                    <button type="button"
+                            class="room-header-button room-install-button"
+                            @onclick="OpenInstallDialog"
+                            aria-label="Instalar o Onda"
+                            title="Instalar o Onda">
+                        <Icon Name="download" Size="16" />
+                        <span class="header-button-label">Apps</span>
+                    </button>
+                }
                 <button type="button" class="room-header-button" @onclick="OpenQualityDialog"
                         aria-label="Ajustes de qualidade da transmissão"
                         title="@($"Qualidade da transmissão: {_screenQuality.Summary}")">
@@ -908,6 +919,44 @@ else
     </div>
 </Modal>
 
+<Modal IsOpen="_showInstallDialog"
+       Title="Leve o Onda com você"
+       Eyebrow="APLICATIVOS"
+       OnClose="CloseInstallDialog">
+    <div class="room-install-options">
+        @if (ShowDesktopInstallOption)
+        {
+            <a class="room-install-option" href="/download/desktop">
+                <span class="room-install-option-icon"><Icon Name="monitor" Size="20" /></span>
+                <span class="room-install-option-copy">
+                    <strong>Onda Desktop</strong>
+                    <small>Instalador para Windows, com captura de tela e áudio por aplicativo.</small>
+                </span>
+                <Icon Name="arrow-up-right" Size="16" />
+            </a>
+        }
+
+        @if (ShowWebInstallOption)
+        {
+            <button type="button"
+                    class="room-install-option"
+                    data-install-pwa>
+                <span class="room-install-option-icon"><Icon Name="globe" Size="20" /></span>
+                <span class="room-install-option-copy">
+                    <strong>Instalar web app</strong>
+                    <small>Abra o Onda em uma janela própria, sem baixar executável.</small>
+                </span>
+                <Icon Name="download" Size="16" />
+            </button>
+            <span class="room-install-note" data-pwa-note>
+                @(_installMobile
+                    ? "No celular, use o menu do navegador para adicionar à tela inicial."
+                    : "O navegador mantém o web app atualizado automaticamente.")
+            </span>
+        }
+    </div>
+</Modal>
+
 <Modal IsOpen="_showQualityDialog"
        Title="Qualidade da transmissão"
        Eyebrow="VÍDEO & TELA"
@@ -1143,6 +1192,11 @@ else
     private string? _nameError;
 
     private bool _showQualityDialog;
+    private bool _showInstallDialog;
+    private bool _installContextLoaded;
+    private bool _installDesktopApp;
+    private bool _installStandalone;
+    private bool _installMobile;
     private ScreenShareQuality _screenQuality = ScreenShareQuality.ForPreset(ScreenShareQuality.PresetBalanced);
     private ScreenShareQuality _qualityDraft = ScreenShareQuality.ForPreset(ScreenShareQuality.PresetBalanced);
     private bool _isSfu;
@@ -1192,6 +1246,21 @@ else
     }
 
     private bool ShowSpotlight => _focusedPeerId is not null && Shares.Count > 1 && Shares.Any(p => p.Id == _focusedPeerId);
+
+    private bool ShowRoomInstallButton =>
+        _installContextLoaded &&
+        !_installDesktopApp &&
+        !(_installStandalone && _installMobile);
+
+    private bool ShowDesktopInstallOption =>
+        _installContextLoaded &&
+        !_installDesktopApp &&
+        !_installMobile;
+
+    private bool ShowWebInstallOption =>
+        _installContextLoaded &&
+        !_installDesktopApp &&
+        !_installStandalone;
 
     private bool CanSendChat => !string.IsNullOrWhiteSpace(_chatDraft);
 
@@ -1282,6 +1351,11 @@ else
             {
                 // A página continua funcionando mesmo sem a detecção do navegador.
             }
+        }
+
+        if (!_installContextLoaded)
+        {
+            await LoadInstallContextAsync();
         }
 
         if (!_jsReady && !_jsInitializing && _jsError is null)
@@ -2187,6 +2261,36 @@ else
         _volumePeerId = _volumePeerId == peerId ? null : peerId;
     }
 
+    private async Task LoadInstallContextAsync()
+    {
+        try
+        {
+            var context = await JS.InvokeAsync<RoomInstallContext>("onda.getInstallContext");
+            if (context is null)
+            {
+                return;
+            }
+
+            _installDesktopApp = context.IsDesktopApp;
+            _installStandalone = context.IsStandalone;
+            _installMobile = context.IsMobile;
+            _installContextLoaded = true;
+
+            if (!_disposed)
+            {
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            // Sem a detecção, não mostramos um botão que talvez não se aplique.
+        }
+    }
+
+    private void OpenInstallDialog() => _showInstallDialog = true;
+
+    private void CloseInstallDialog() => _showInstallDialog = false;
+
     private int GetVolume(string channel, string peerId)
     {
         var values = channel == ScreenChannel ? _screenVolumes : _voiceVolumes;
@@ -2655,4 +2759,9 @@ else
         string FacingMode,
         bool TorchSupported,
         bool TorchOn);
+
+    private sealed record RoomInstallContext(
+        bool IsDesktopApp,
+        bool IsStandalone,
+        bool IsMobile);
 }

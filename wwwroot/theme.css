@@ -304,6 +304,21 @@ html[data-theme="dark"] .app-card-web .app-card-icon {
     color: var(--cream);
 }
 
+html[data-theme="dark"] .room-install-option {
+    border-color: var(--line);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+html[data-theme="dark"] .room-install-option:hover {
+    border-color: var(--line-strong);
+    background: rgba(205, 242, 124, 0.1);
+}
+
+html[data-theme="dark"] .room-install-option-icon {
+    background: rgba(205, 242, 124, 0.16);
+    color: var(--lime);
+}
+
 html[data-theme="dark"] .text-input::placeholder {
     color: var(--ink-muted);
 }

@@ -3468,3 +3468,116 @@
 }
 
 
+
+/* ---------- Instalar app ---------- */
+
+.room-install-options {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.room-install-option {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    width: 100%;
+    padding: 0.85rem 0.9rem;
+    border: 1px solid var(--line);
+    border-radius: 0.9rem;
+    background: rgba(255, 255, 255, 0.55);
+    color: var(--ink);
+    font: inherit;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+        border-color 160ms ease,
+        background-color 160ms ease,
+        transform 180ms ease;
+}
+
+.room-install-option:hover {
+    border-color: var(--line-strong);
+    background: rgba(205, 242, 124, 0.12);
+    transform: translateY(-1px);
+}
+
+.room-install-option-icon {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.8rem;
+    background: rgba(205, 242, 124, 0.32);
+    color: var(--ink);
+}
+
+.room-install-option-copy {
+    display: grid;
+    gap: 0.18rem;
+    min-width: 0;
+    flex: 1;
+}
+
+.room-install-option-copy strong {
+    font-size: 0.82rem;
+    font-weight: 680;
+}
+
+.room-install-option-copy small {
+    color: var(--ink-muted);
+    font-size: 0.68rem;
+    line-height: 1.4;
+}
+
+.room-install-option > .onda-icon {
+    flex: 0 0 auto;
+    color: var(--ink-muted);
+}
+
+.room-install-note {
+    display: block;
+    color: var(--ink-muted);
+    font-size: 0.66rem;
+    line-height: 1.45;
+    text-align: center;
+}
+
+@media (max-width: 700px) {
+    .room-header.has-install .room-title-line h1 {
+        max-width: 32vw;
+    }
+
+    .room-header.has-install .room-title-block > p {
+        max-width: 32vw;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .room-header.has-install .room-header-actions {
+        gap: 0.15rem;
+    }
+
+    .room-install-button {
+        width: 1.8rem;
+        height: 1.8rem;
+        min-height: 1.8rem;
+    }
+
+    .room-install-button .onda-icon {
+        width: 15px;
+        height: 15px;
+    }
+}
+
+@media (max-width: 460px) {
+    .room-header.has-install .room-title-line h1 {
+        max-width: 30vw;
+    }
+
+    .room-header.has-install .room-title-block > p {
+        max-width: 30vw;
+    }
+}

@@ -64,6 +64,7 @@ dotnet run --launch-profile sfu
 - **Webcam e tela**: um compartilhamento de vídeo por pessoa, com destaque no palco e clique para ampliar/voltar à grade.
 - **Câmera no celular**: quando o aparelho expõe mais de uma câmera, a sala permite escolher entre frontal e traseira; a lanterna aparece quando o navegador e a câmera suportam `torch`.
 - **Aplicativos**: a home oferece o instalador do **Onda Desktop** em `/download/desktop` (resolvido para a última release do GitHub) e a instalação como **web app/PWA** pelo navegador, com manifest, service worker, ícone próprio e cache offline.
+- **Atalho de instalação na sala**: o topo da sala mostra as opções certas para o contexto — navegador desktop (web app + executável), web app instalado no desktop (só executável), navegador mobile (só web app) e web app instalado no mobile (nenhum botão); dentro do app desktop o botão não aparece.
 - **Controles durante a transmissão**: com a tela compartilhada, dá para **trocar a tela** e **silenciar/reativar o áudio da tela** sem encerrar a chamada; o botão **Parar** continua sendo o encerramento explícito.
 - **Tela cheia**: a sala inteira ou uma tela/webcam individual pode ocupar o monitor; os overlays de mídia somem após 3 s sem movimento do mouse ou quando ele sai de cima da imagem, e voltam ao passar o mouse ou tocar.
 - **Áudio da tela**: quando o navegador fornece a faixa, é publicada separadamente. O Firefox não captura áudio de tela; o app avisa no modal de qualidade e ao iniciar o compartilhamento.

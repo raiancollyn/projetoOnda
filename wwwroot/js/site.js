@@ -1260,6 +1260,23 @@
             (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     }
 
+    function isMobileDevice() {
+        if (navigator.userAgentData?.mobile === true) {
+            return true;
+        }
+
+        return /android|iphone|ipad|ipod|iemobile|opera mini|mobile/i.test(navigator.userAgent || "") ||
+            (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    }
+
+    function getInstallContext() {
+        return {
+            isDesktopApp: Boolean(window.ondaDesktop?.isDesktop),
+            isStandalone: isStandalonePwa(),
+            isMobile: isMobileDevice()
+        };
+    }
+
     window.addEventListener("beforeinstallprompt", (event) => {
         event.preventDefault();
         deferredInstallPrompt = event;
@@ -1354,6 +1371,7 @@
         toggleTheme,
         installPwa,
         canInstallPwa: () => Boolean(deferredInstallPrompt) || isStandalonePwa(),
-        isStandalonePwa
+        isStandalonePwa,
+        getInstallContext
     });
 })();
