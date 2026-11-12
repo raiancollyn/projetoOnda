@@ -1106,37 +1106,6 @@ else
                     </span>
                 </div>
             }
-
-            <p class="quality-note">
-                <Icon Name="alert" Size="15" />
-                <span>
-                    @if (_localScreenOn)
-                    {
-                        <text>As alterações são aplicadas à transmissão atual.</text>
-                        @if (_isSfu)
-                        {
-                            <text> Resolução, FPS, bitrate e prioridade são aplicados agora; o codec será usado no próximo compartilhamento.</text>
-                        }
-                        else
-                        {
-                            <text> No P2P, resolução, FPS e bitrate são aplicados agora; o codec só muda ao entrar novamente.</text>
-                        }
-                    }
-                    else
-                    {
-                        <text>Resolução, FPS e bitrate são aplicados ao próximo compartilhamento de tela.</text>
-                        @if (_isSfu)
-                        {
-                            <text> O codec escolhido também vale para o próximo compartilhamento.</text>
-                        }
-                        else
-                        {
-                            <text> No modo P2P, o codec é negociado ao entrar na sala; para trocá-lo, entre novamente após salvar.</text>
-                        }
-                    }
-                    A disponibilidade depende do navegador e do servidor; pode haver fallback.
-                </span>
-            </p>
         }
         else
         {
@@ -1190,21 +1159,24 @@ else
                 <span class="quality-scale"><span>0,3 Mbps</span><span>Mais nitidez</span><span>12 Mbps</span></span>
             </label>
 
-            <p class="quality-note">
-                <Icon Name="alert" Size="15" />
-                <span>
-                    @if (_localCameraOn)
-                    {
-                        <text>As alterações são aplicadas à câmera atual sem encerrar a chamada.</text>
-                    }
-                    else
-                    {
-                        <text>As alterações valem para a próxima vez que você ligar a câmera.</text>
-                    }
-                    A câmera pode entregar menos que o máximo teórico; o navegador faz o ajuste.
-                </span>
-            </p>
         }
+
+        <p class="quality-note">
+            <Icon Name="alert" Size="15" />
+            <span>
+                @if (_localScreenOn || _localCameraOn)
+                {
+                    <text>Salvar aplica os ajustes à transmissão ativa sem encerrar a chamada; o que não estiver ativo fica para a próxima vez.</text>
+                }
+                else
+                {
+                    <text>Salvar guarda os ajustes para a próxima transmissão.</text>
+                }
+                <text> Tela e câmera têm perfis separados, e trocar de tela mantém as preferências.</text>
+                <text> Resolução, FPS e bitrate valem para as duas transmissões. Prioridade e codec se aplicam à tela; o codec preferido entra no próximo compartilhamento — no P2P, ao entrar novamente.</text>
+                <text> A disponibilidade depende do navegador, do dispositivo e do servidor; opções acima do limite ficam desativadas e pode haver ajuste automático.</text>
+            </span>
+        </p>
 
         <div class="modal-actions quality-actions">
             <button type="button" class="quality-reset" @onclick="ResetQualityDefaults">
