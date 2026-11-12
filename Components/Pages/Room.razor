@@ -287,6 +287,28 @@ else
                                         <span class="stage-button-label">@ScreenAudioLabel</span>
                                     </button>
                                 }
+                                @if (RemoteScreenAudioPeer is ParticipantView remoteScreenAudio)
+                                {
+                                    <div class="stage-remote-audio">
+                                        <button type="button"
+                                                class="stage-grid-button stage-screen-control @(GetVolume(ScreenChannel, remoteScreenAudio.Id) > 0 ? "is-on" : null)"
+                                                aria-label="@(GetVolume(ScreenChannel, remoteScreenAudio.Id) == 0 ? $"Reativar áudio da tela de {remoteScreenAudio.Name}" : $"Silenciar áudio da tela de {remoteScreenAudio.Name}")"
+                                                title="@(GetVolume(ScreenChannel, remoteScreenAudio.Id) == 0 ? "Reativar áudio da tela" : "Silenciar áudio da tela")"
+                                                @onclick="() => ToggleMute(remoteScreenAudio.Id, ScreenChannel)">
+                                            <Icon Name="@(GetVolume(ScreenChannel, remoteScreenAudio.Id) == 0 ? "volume-off" : "volume")" Size="14" />
+                                            <span class="stage-button-label">@(GetVolume(ScreenChannel, remoteScreenAudio.Id) == 0 ? "Reativar som" : "Silenciar")</span>
+                                        </button>
+                                        <input type="range"
+                                               min="0"
+                                               max="100"
+                                               step="1"
+                                               value="@GetVolume(ScreenChannel, remoteScreenAudio.Id)"
+                                               style="--volume-fill: @(GetVolume(ScreenChannel, remoteScreenAudio.Id))%"
+                                               @oninput="e => ChangeVolume(remoteScreenAudio.Id, ScreenChannel, e)"
+                                               aria-label="@($"Volume do áudio da tela de {remoteScreenAudio.Name}")" />
+                                        <strong>@GetVolume(ScreenChannel, remoteScreenAudio.Id)%</strong>
+                                    </div>
+                                }
                                 <button type="button"
                                         class="stage-grid-button stage-fullscreen-button"
                                         aria-label="Tela cheia da sala"
@@ -461,6 +483,18 @@ else
                             </span>
                             <span class="dock-control-label">Câmera</span>
                         </button>
+
+                        @if (_localCameraOn && (_cameraDevices.Count > 1 || _cameraTorchSupported))
+                        {
+                            <button type="button"
+                                    class="dock-control dock-camera-settings"
+                                    @onclick="OpenCameraDialogAsync"
+                                    aria-label="Opções da câmera"
+                                    title="Escolher câmera ou lanterna">
+                                <span class="dock-control-icon"><Icon Name="sliders" Size="18" /></span>
+                                <span class="dock-control-label">Ajustes</span>
+                            </button>
+                        }
 
                         <button type="button"
                                 class="dock-control dock-screen-control @(_localScreenOn ? "is-active" : "is-off")"
@@ -811,6 +845,69 @@ else
     </form>
 </Modal>
 
+<Modal IsOpen="_showCameraDialog"
+       Title="Câmera"
+       Eyebrow="VÍDEO"
+       OnClose="CloseCameraDialog">
+    <div class="camera-options-form">
+        @if (_cameraDevices.Count > 1)
+        {
+            <label class="field">
+                <span class="field-label">Escolha a câmera</span>
+                <select class="text-input"
+                        @bind="_activeCameraId"
+                        @bind:after="SwitchCameraAsync"
+                        disabled="@_cameraOptionsBusy">
+                    @foreach (var device in _cameraDevices)
+                    {
+                        <option value="@device.DeviceId">@CameraLabel(device)</option>
+                    }
+                </select>
+                <span class="field-hint">A troca mantém a câmera ligada para a sala.</span>
+            </label>
+        }
+        else
+        {
+            <p class="camera-options-note">Só encontramos uma câmera disponível neste dispositivo.</p>
+        }
+
+        @if (_cameraTorchSupported)
+        {
+            <label class="camera-toggle-row">
+                <span>
+                    <Icon Name="sun" Size="17" />
+                    <span>
+                        <strong>Lanterna</strong>
+                        <small>Ilumina o ambiente usando a câmera traseira.</small>
+                    </span>
+                </span>
+                <input type="checkbox"
+                       checked="@_cameraTorchOn"
+                       @onchange="ToggleCameraTorchAsync"
+                       disabled="@_cameraOptionsBusy"
+                       aria-label="Ligar ou desligar a lanterna" />
+            </label>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(_cameraOptionsError))
+        {
+            <p class="form-error" role="alert"><Icon Name="alert" Size="15" /> @_cameraOptionsError</p>
+        }
+
+        <p class="camera-options-note">
+            A disponibilidade de câmera traseira e lanterna depende do aparelho e do navegador.
+        </p>
+
+        <div class="modal-actions modal-actions-end">
+            <div class="modal-buttons">
+                <button type="button" class="button button-ghost" @onclick="CloseCameraDialog">
+                    Fechar
+                </button>
+            </div>
+        </div>
+    </div>
+</Modal>
+
 <Modal IsOpen="_showQualityDialog"
        Title="Qualidade da transmissão"
        Eyebrow="VÍDEO & TELA"
@@ -1013,6 +1110,14 @@ else
     private bool _localMicOn;
     private bool _hasMic;
     private bool _localCameraOn;
+    private bool _showCameraDialog;
+    private bool _cameraOptionsBusy;
+    private IReadOnlyList<CameraDeviceView> _cameraDevices = [];
+    private string _activeCameraId = "";
+    private string _currentCameraId = "";
+    private bool _cameraTorchSupported;
+    private bool _cameraTorchOn;
+    private string? _cameraOptionsError;
     private bool _localScreenOn;
     private bool _localScreenWithAudio;
     private bool _localScreenAudioEnabled;
@@ -1047,6 +1152,21 @@ else
 
     private IReadOnlyList<ParticipantView> Shares =>
         _room?.Participants.Where(p => p.CameraOn || p.ScreenOn).ToArray() ?? [];
+
+    private ParticipantView? RemoteScreenAudioPeer
+    {
+        get
+        {
+            var candidate = ShowSpotlight
+                ? FocusedShare
+                : Shares.Count == 1
+                    ? Shares[0]
+                    : null;
+            return candidate is { ScreenOn: true, ScreenWithAudio: true } && candidate.Id != Guest.Id
+                ? candidate
+                : null;
+        }
+    }
 
     private ParticipantView? FocusedShare
     {
@@ -1616,11 +1736,27 @@ else
 
         _localMicOn = micOn;
         _hasMic = hasMic;
+        var wasCameraOn = _localCameraOn;
         _localCameraOn = cameraOn;
         var wasScreenOn = _localScreenOn;
         var hadScreenAudio = _localScreenWithAudio;
         _localScreenOn = screenOn;
         _localScreenWithAudio = screenWithAudio;
+
+        if (cameraOn && !wasCameraOn)
+        {
+            _ = RefreshCameraOptionsAsync();
+        }
+        else if (!cameraOn && !_cameraOptionsBusy)
+        {
+            _showCameraDialog = false;
+            _cameraDevices = [];
+            _activeCameraId = string.Empty;
+            _currentCameraId = string.Empty;
+            _cameraTorchSupported = false;
+            _cameraTorchOn = false;
+            _cameraOptionsError = null;
+        }
 
         if (!screenOn)
         {
@@ -1737,6 +1873,151 @@ else
             _actionPending = null;
             StateHasChanged();
         }
+    }
+
+    private async Task OpenCameraDialogAsync()
+    {
+        _cameraOptionsError = null;
+        await RefreshCameraOptionsAsync();
+        _showCameraDialog = true;
+        StateHasChanged();
+    }
+
+    private async Task RefreshCameraOptionsAsync()
+    {
+        if (_jsModule is null || !_localCameraOn)
+        {
+            return;
+        }
+
+        try
+        {
+            var options = await _jsModule.InvokeAsync<CameraOptionsView>("getCameraOptions");
+            if (options is null)
+            {
+                return;
+            }
+
+            _cameraDevices = options.Devices ?? [];
+            _cameraTorchSupported = options.TorchSupported;
+            _cameraTorchOn = options.TorchOn;
+            _cameraOptionsError = null;
+
+            var active = options.ActiveDeviceId;
+            if (string.IsNullOrWhiteSpace(active) ||
+                !_cameraDevices.Any(device => device.DeviceId == active))
+            {
+                active = _cameraDevices.FirstOrDefault()?.DeviceId ?? string.Empty;
+            }
+
+            _currentCameraId = active;
+            _activeCameraId = active;
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            _cameraOptionsError = "Não foi possível consultar as câmeras.";
+        }
+
+        if (!_disposed)
+        {
+            StateHasChanged();
+        }
+    }
+
+    private async Task SwitchCameraAsync()
+    {
+        if (_jsModule is null ||
+            _cameraOptionsBusy ||
+            string.IsNullOrWhiteSpace(_activeCameraId) ||
+            _activeCameraId == _currentCameraId)
+        {
+            return;
+        }
+
+        var target = _activeCameraId;
+        _cameraOptionsBusy = true;
+        _cameraOptionsError = null;
+        try
+        {
+            var changed = await _jsModule.InvokeAsync<bool>("switchCamera", target);
+            if (!changed)
+            {
+                _cameraOptionsError = "Não foi possível trocar a câmera. Verifique a permissão do navegador.";
+                _activeCameraId = _currentCameraId;
+            }
+
+            await RefreshCameraOptionsAsync();
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            _cameraOptionsError = "Não foi possível trocar a câmera.";
+            _activeCameraId = _currentCameraId;
+        }
+        finally
+        {
+            _cameraOptionsBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleCameraTorchAsync(ChangeEventArgs args)
+    {
+        if (_jsModule is null || _cameraOptionsBusy)
+        {
+            return;
+        }
+
+        var enabled = args.Value is bool value && value;
+        _cameraOptionsBusy = true;
+        _cameraOptionsError = null;
+        try
+        {
+            var changed = await _jsModule.InvokeAsync<bool>("setCameraTorch", enabled);
+            if (changed)
+            {
+                _cameraTorchOn = enabled;
+            }
+            else
+            {
+                _cameraTorchOn = !enabled;
+                _cameraOptionsError = "Esta câmera não permitiu alterar a lanterna.";
+            }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            _cameraTorchOn = !enabled;
+            _cameraOptionsError = "Não foi possível alterar a lanterna.";
+        }
+        finally
+        {
+            _cameraOptionsBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CloseCameraDialog() => _showCameraDialog = false;
+
+    private static string CameraLabel(CameraDeviceView device)
+    {
+        var facing = device.Facing switch
+        {
+            "environment" => "Traseira",
+            "user" => "Frontal",
+            _ => null
+        };
+
+        if (string.IsNullOrWhiteSpace(facing))
+        {
+            return device.Label;
+        }
+
+        var label = device.Label.ToLowerInvariant();
+        var alreadyDescribesFacing = device.Facing == "environment"
+            ? label.Contains("traseira") || label.Contains("back") || label.Contains("rear") ||
+              label.Contains("environment")
+            : label.Contains("frontal") || label.Contains("front") || label.Contains("user");
+
+        return alreadyDescribesFacing ? device.Label : $"{facing} · {device.Label}";
     }
 
     private async Task ToggleScreenAsync()
@@ -2365,4 +2646,13 @@ else
 
         _dotNetRef?.Dispose();
     }
+
+    private sealed record CameraDeviceView(string DeviceId, string Label, string Facing);
+
+    private sealed record CameraOptionsView(
+        IReadOnlyList<CameraDeviceView> Devices,
+        string ActiveDeviceId,
+        string FacingMode,
+        bool TorchSupported,
+        bool TorchOn);
 }

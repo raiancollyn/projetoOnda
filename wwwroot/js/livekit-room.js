@@ -717,22 +717,30 @@ export async function toggleCamera() {
         return;
     }
 
+    await startCameraWithOptions({ facingMode: "user" });
+}
+
+async function startCameraWithOptions(videoOptions = {}) {
+    if (!initialized || !room || cameraBusy) {
+        return false;
+    }
+
     cameraBusy = true;
     try {
         let track;
         try {
             track = await createLocalVideoTrack({
                 resolution: { width: 1280, height: 720, frameRate: 30 },
-                facingMode: "user"
+                ...videoOptions
             });
         } catch (error) {
             notifyError("camera", cameraErrorMessage(error));
-            return;
+            return false;
         }
 
         if (!initialized || !room) {
             track.stop();
-            return;
+            return false;
         }
 
         if (local.screenOn) {
@@ -758,7 +766,7 @@ export async function toggleCamera() {
             track.stop();
             notifyError("camera", "Não foi possível publicar a câmera no servidor de mídia.");
             notifyMediaState();
-            return;
+            return false;
         }
 
         local.cameraTrack = track;
@@ -767,8 +775,68 @@ export async function toggleCamera() {
         local.presentationKind = "camera";
         notifyMediaState();
         syncMediaElements();
+        return true;
     } finally {
         cameraBusy = false;
+    }
+}
+
+export async function switchCamera(deviceId) {
+    if (!initialized || !room || cameraBusy || !local.cameraOn || !deviceId) {
+        return false;
+    }
+
+    await stopCameraSession(true);
+    return startCameraWithOptions({ deviceId });
+}
+
+export async function getCameraOptions() {
+    let devices = [];
+    try {
+        devices = await navigator.mediaDevices?.enumerateDevices?.() || [];
+    } catch {
+        devices = [];
+    }
+
+    const cameras = devices
+        .filter((device) => device.kind === "videoinput")
+        .map((device, index) => {
+            const label = (device.label || "").trim() || `Câmera ${index + 1}`;
+            const lower = label.toLowerCase();
+            const facing = /(back|rear|environment|traseira|trás|tras)/.test(lower)
+                ? "environment"
+                : /(front|user|frontal|frente)/.test(lower)
+                    ? "user"
+                    : "";
+            return { deviceId: device.deviceId, label, facing };
+        });
+
+    const mediaTrack = local.cameraTrack?.mediaStreamTrack;
+    const settings = mediaTrack?.getSettings?.() || {};
+    const capabilities = mediaTrack?.getCapabilities?.() || {};
+
+    return {
+        devices: cameras,
+        activeDeviceId: settings.deviceId || "",
+        facingMode: settings.facingMode || "",
+        torchSupported: Boolean(capabilities.torch),
+        torchOn: Boolean(settings.torch)
+    };
+}
+
+export async function setCameraTorch(enabled) {
+    const mediaTrack = local.cameraTrack?.mediaStreamTrack;
+    const capabilities = mediaTrack?.getCapabilities?.() || {};
+    if (!mediaTrack || !capabilities.torch) {
+        return false;
+    }
+
+    try {
+        await mediaTrack.applyConstraints({ advanced: [{ torch: Boolean(enabled) }] });
+        return Boolean(mediaTrack.getSettings?.().torch);
+    } catch (error) {
+        console.warn("Onda: could not change camera torch", error);
+        return false;
     }
 }
 

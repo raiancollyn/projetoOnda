@@ -62,10 +62,11 @@ dotnet run --launch-profile sfu
 - **Microfone**: ativação com permissão, mute/retomada e detecção local de fala.
 - **Indicador de fala** sincronizado nos avatares e na lista de pessoas.
 - **Webcam e tela**: um compartilhamento de vídeo por pessoa, com destaque no palco e clique para ampliar/voltar à grade.
+- **Câmera no celular**: quando o aparelho expõe mais de uma câmera, a sala permite escolher entre frontal e traseira; a lanterna aparece quando o navegador e a câmera suportam `torch`.
 - **Controles durante a transmissão**: com a tela compartilhada, dá para **trocar a tela** e **silenciar/reativar o áudio da tela** sem encerrar a chamada; o botão **Parar** continua sendo o encerramento explícito.
 - **Tela cheia**: a sala inteira ou uma tela/webcam individual pode ocupar o monitor; os overlays de mídia somem após 3 s sem movimento do mouse ou quando ele sai de cima da imagem, e voltam ao passar o mouse ou tocar.
 - **Áudio da tela**: quando o navegador fornece a faixa, é publicada separadamente. O Firefox não captura áudio de tela; o app avisa no modal de qualidade e ao iniciar o compartilhamento.
-- **Volume individual**: sliders por participante para voz e áudio de tela, com mute.
+- **Volume individual**: sliders por participante para voz e áudio de tela, com mute; ao assistir à tela de outra pessoa, o volume e o mute do áudio da tela também ficam disponíveis no próprio palco.
 - **Qualidade do compartilhamento de tela**:
   - presets **Fluida**, **Equilibrada**, **Nítida** e **Personalizada**;
   - resolução (720p, 1080p, 1440p);

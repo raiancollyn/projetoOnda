@@ -911,6 +911,83 @@
     cursor: not-allowed;
 }
 
+.stage-remote-audio {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.18rem 0.45rem 0.18rem 0.2rem;
+    border: 1px solid rgba(205, 242, 124, 0.24);
+    border-radius: 999px;
+    background: rgba(205, 242, 124, 0.07);
+}
+
+.stage-remote-audio input[type="range"] {
+    width: 5.25rem;
+    accent-color: var(--lime);
+}
+
+.stage-remote-audio strong {
+    min-width: 2rem;
+    color: var(--lime);
+    font-size: 0.58rem;
+    font-weight: 650;
+    text-align: right;
+}
+
+.camera-options-form {
+    display: grid;
+    gap: 0.9rem;
+}
+
+.camera-options-note {
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: 0.72rem;
+    line-height: 1.5;
+}
+
+.camera-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.8rem 0.9rem;
+    border: 1px solid var(--line);
+    border-radius: 0.8rem;
+    background: rgba(255, 255, 255, 0.55);
+    cursor: pointer;
+}
+
+.camera-toggle-row > span {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-width: 0;
+}
+
+.camera-toggle-row > span > span {
+    display: grid;
+    gap: 0.15rem;
+}
+
+.camera-toggle-row strong {
+    font-size: 0.76rem;
+    font-weight: 650;
+}
+
+.camera-toggle-row small {
+    color: var(--ink-muted);
+    font-size: 0.66rem;
+    line-height: 1.35;
+}
+
+.camera-toggle-row input[type="checkbox"] {
+    width: 1.1rem;
+    height: 1.1rem;
+    flex: 0 0 auto;
+    accent-color: var(--lime);
+}
+
 .media-grid {
     flex: 1;
     min-height: 0;
@@ -2563,6 +2640,20 @@
 
     .stage-screen-control .stage-button-label {
         display: none;
+    }
+
+    .stage-remote-audio {
+        gap: 0.25rem;
+        padding-right: 0.3rem;
+    }
+
+    .stage-remote-audio .stage-button-label,
+    .stage-remote-audio strong {
+        display: none;
+    }
+
+    .stage-remote-audio input[type="range"] {
+        width: 4rem;
     }
 
     .stage-grid-button .onda-icon {

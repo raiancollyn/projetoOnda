@@ -263,6 +263,27 @@ html[data-theme="dark"] .text-input {
     color: var(--ink);
 }
 
+html[data-theme="light"] select.text-input option {
+    background-color: #fffdf8;
+    color: #14231f;
+}
+
+html[data-theme="dark"] select.text-input,
+html[data-theme="dark"] select.text-input option {
+    background-color: #10211c;
+    color: var(--ink);
+}
+
+html[data-theme="dark"] select.text-input option:checked {
+    background-color: #1a3029;
+    color: var(--lime);
+}
+
+html[data-theme="dark"] .camera-toggle-row {
+    border-color: var(--line);
+    background: rgba(255, 255, 255, 0.05);
+}
+
 html[data-theme="dark"] .text-input::placeholder {
     color: var(--ink-muted);
 }
