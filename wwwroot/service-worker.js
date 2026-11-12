@@ -15,6 +15,7 @@ const PRECACHE = [
 
 const NEVER_CACHE = [
     "/_blazor",
+    "/_framework",
     "/api/",
     "/download/",
     "/health",
