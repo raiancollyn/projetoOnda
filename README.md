@@ -7,7 +7,25 @@ Uma sala de conversa completa no navegador: **voz, webcam, compartilhamento de t
 
 O usuário recebe um nome aleatório ao entrar (por exemplo, `Convidado 482`), pode trocá-lo, criar salas abertas ou protegidas por senha e entrar por uma listagem ou link. Enquanto uma sala tem usuários, metadados e chat ficam em **SQLite**; ao sair a última pessoa, a sala e todo o histórico são apagados.
 
-> **App desktop (em desenvolvimento):** o primeiro marco está em [`../desktop/README.md`](../desktop/README.md). Ele traz o shell Electron, deep link, seletor contextual de captura, sidecar Windows de áudio por aplicativo, bridge de `getDisplayMedia` com PCM via WebAudio, captura WGC quando instalado em `LocalAppData/Programs` e instalador NSIS por usuário. Falta validar a publicação em sala real, assinatura e auto-update.
+## Demonstração
+
+**[Abrir o Onda — https://onda.dpbr.net](https://onda.dpbr.net)**
+
+| Home clara | Home escura |
+| --- | --- |
+| ![Página inicial do Onda no tema claro](docs/screenshots/home-light.png) | ![Página inicial do Onda no tema escuro](docs/screenshots/home-dark.png) |
+
+| Sala com duas pessoas | Sala no tema escuro |
+| --- | --- |
+| ![Sala de demonstração com chat e participantes](docs/screenshots/room-light.png) | ![Sala de demonstração no tema escuro](docs/screenshots/room-dark.png) |
+
+<p align="center">
+  <img src="docs/screenshots/home-mobile.png" width="320" alt="Página inicial do Onda no celular" />
+  <br />
+  <sub>Home responsiva em 390 px.</sub>
+</p>
+
+> **App desktop para Windows:** [Onda Desktop](https://github.com/raiancollyn/ondaDesktop) — instalador NSIS, captura WGC, áudio por aplicativo e auto-update. As releases ainda não são assinadas.
 
 ## Rodando localmente
 
