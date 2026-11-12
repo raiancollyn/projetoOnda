@@ -1290,6 +1290,42 @@
         }
     }
 
+    function setPwaNote(result) {
+        const note = document.querySelector("[data-pwa-note]");
+        if (!(note instanceof HTMLElement)) {
+            return;
+        }
+
+        note.textContent = result === "accepted"
+            ? "Instalação iniciada. Confirme no navegador."
+            : result === "dismissed"
+                ? "Instalação cancelada. Você pode tentar de novo quando quiser."
+                : result === "installed"
+                    ? "Você já está usando o web app instalado."
+                    : result === "ios"
+                        ? "No iPhone ou iPad, toque em Compartilhar → Adicionar à Tela de Início."
+                        : "No menu do navegador, escolha “Instalar Onda” ou “Adicionar à tela inicial”.";
+    }
+
+    document.addEventListener("click", async (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const button = target.closest("[data-install-pwa]");
+        if (!(button instanceof HTMLElement)) {
+            return;
+        }
+
+        event.preventDefault();
+        setPwaNote(await installPwa());
+    });
+
+    if (isStandalonePwa()) {
+        setPwaNote("installed");
+    }
+
     function registerServiceWorker() {
         if (!("serviceWorker" in navigator) || !window.isSecureContext) {
             return;
