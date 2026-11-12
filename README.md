@@ -7,7 +7,7 @@ Uma sala de conversa completa no navegador: **voz, webcam, compartilhamento de t
 
 O usuário recebe um nome aleatório ao entrar (por exemplo, `Convidado 482`), pode trocá-lo, criar salas abertas ou protegidas por senha e entrar por uma listagem ou link. Enquanto uma sala tem usuários, metadados e chat ficam em **SQLite**; ao sair a última pessoa, a sala e todo o histórico são apagados.
 
-> **App desktop (em desenvolvimento):** o primeiro marco está em [`../desktop/README.md`](../desktop/README.md). Ele traz o shell Electron, deep link, seletor contextual de captura, sidecar Windows de áudio por aplicativo, bridge de `getDisplayMedia` com PCM via WebAudio e captura WGC quando instalado em `LocalAppData/Programs`. Falta validar a publicação em sala real e empacotar o instalador.
+> **App desktop (em desenvolvimento):** o primeiro marco está em [`../desktop/README.md`](../desktop/README.md). Ele traz o shell Electron, deep link, seletor contextual de captura, sidecar Windows de áudio por aplicativo, bridge de `getDisplayMedia` com PCM via WebAudio, captura WGC quando instalado em `LocalAppData/Programs` e instalador NSIS por usuário. Falta validar a publicação em sala real, assinatura e auto-update.
 
 ## Rodando localmente
 
