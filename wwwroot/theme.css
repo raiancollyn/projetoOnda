@@ -546,8 +546,8 @@ html[data-theme="dark"] .signal-strip {
 }
 
 html[data-theme="dark"] .signal-icon {
-    background: rgba(205, 242, 124, 0.16);
-    color: #14231f;
+    background: rgba(205, 242, 124, 0.2);
+    color: var(--lime);
 }
 
 html[data-theme="dark"] .lobby-section {
