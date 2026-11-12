@@ -3375,6 +3375,15 @@
     color: var(--ink-muted);
 }
 
+.quality-field-hint {
+    display: block;
+    margin-top: 0.1rem;
+    color: var(--ink-muted);
+    font-size: 0.58rem;
+    font-weight: 500;
+    letter-spacing: 0;
+}
+
 .quality-actions {
     align-items: center;
 }

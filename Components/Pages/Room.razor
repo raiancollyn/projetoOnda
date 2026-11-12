@@ -1077,7 +1077,10 @@ else
 
             <div class="quality-grid">
                 <label class="field">
-                    <span class="field-label">Codec preferido</span>
+                    <span class="field-label">
+                        Codec preferido
+                        <small class="quality-field-hint">no próximo compartilhamento</small>
+                    </span>
                     <select class="text-input" @bind="_qualityDraft.Codec" @bind:after="MarkQualityCustom">
                         <option value="auto">Automático</option>
                         <option value="vp8">VP8</option>
@@ -1166,14 +1169,14 @@ else
             <span>
                 @if (_localScreenOn || _localCameraOn)
                 {
-                    <text>Salvar aplica os ajustes à transmissão ativa sem encerrar a chamada; o que não estiver ativo fica para a próxima vez.</text>
+                    <text>Salvar aplica na hora resolução, FPS e bitrate da transmissão ativa; prioridade se aplica à tela.</text>
                 }
                 else
                 {
                     <text>Salvar guarda os ajustes para a próxima transmissão.</text>
                 }
-                <text> Tela e câmera têm perfis separados, e trocar de tela mantém as preferências.</text>
-                <text> Resolução, FPS e bitrate valem para as duas transmissões. Prioridade e codec se aplicam à tela; o codec preferido entra no próximo compartilhamento — no P2P, ao entrar novamente.</text>
+                <text> O codec preferido só entra no próximo compartilhamento de tela — no P2P, ao entrar novamente.</text>
+                <text> Tela e câmera têm perfis separados; os ajustes da outra aba ficam salvos para a próxima vez e trocar de tela mantém as preferências.</text>
                 <text> A disponibilidade depende do navegador, do dispositivo e do servidor; opções acima do limite ficam desativadas e pode haver ajuste automático.</text>
             </span>
         </p>
