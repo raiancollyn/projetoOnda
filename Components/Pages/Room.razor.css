@@ -3544,6 +3544,24 @@
     text-align: center;
 }
 
+.room-install-download {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    padding: 0.15rem;
+    color: var(--ink-muted);
+    font-size: 0.65rem;
+    line-height: 1.4;
+    text-align: center;
+    text-decoration: none;
+}
+
+.room-install-download:hover {
+    color: var(--ink);
+    text-decoration: underline;
+}
+
 @media (max-width: 700px) {
     .room-header.has-install .room-title-line h1 {
         max-width: 32vw;

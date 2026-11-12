@@ -926,13 +926,17 @@ else
     <div class="room-install-options">
         @if (ShowDesktopInstallOption)
         {
-            <a class="room-install-option" href="/download/desktop">
+            <a class="room-install-option" href="@DesktopDeepLink">
                 <span class="room-install-option-icon"><Icon Name="monitor" Size="20" /></span>
                 <span class="room-install-option-copy">
-                    <strong>Onda Desktop</strong>
-                    <small>Instalador para Windows, com captura de tela e áudio por aplicativo.</small>
+                    <strong>Abrir no Onda Desktop</strong>
+                    <small>Se o aplicativo estiver instalado, esta sala abre direto nele.</small>
                 </span>
                 <Icon Name="arrow-up-right" Size="16" />
+            </a>
+            <a class="room-install-download" href="/download/desktop">
+                <Icon Name="download" Size="14" />
+                Ainda não tem o app? Baixar instalador
             </a>
         }
 
@@ -1411,6 +1415,8 @@ else
         _installContextLoaded &&
         !_installDesktopApp &&
         !_installMobile;
+
+    private string DesktopDeepLink => $"onda://sala/{Uri.EscapeDataString(Code)}";
 
     private bool ShowWebInstallOption =>
         _installContextLoaded &&
