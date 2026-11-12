@@ -512,7 +512,8 @@
         return false;
     }
 
-    const overlayHideDelay = 3000;
+    const hasCoarsePointer = window.matchMedia?.("(hover: none)")?.matches ?? false;
+    const overlayHideDelay = hasCoarsePointer ? 5000 : 3000;
     const overlayTimers = new WeakMap();
 
     function getMediaShell(target) {
@@ -616,6 +617,14 @@
     }, { passive: true });
 
     document.addEventListener("pointerout", (event) => {
+        // Touch browsers fire pointerout as soon as the finger leaves the
+        // glass, even when the tap landed inside the tile. Hiding here would
+        // make the controls disappear in the same instant the user reveals
+        // them. On touch devices the inactivity timer is responsible.
+        if (hasCoarsePointer || event.pointerType === "touch") {
+            return;
+        }
+
         const from = getMediaShell(event.target);
         if (!from || getMediaShell(event.relatedTarget) === from) {
             return;
