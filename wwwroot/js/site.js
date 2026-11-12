@@ -636,6 +636,616 @@
         overlayObserver.observe(document.documentElement, { childList: true, subtree: true });
     }
 
+    function installDesktopCapture() {
+        const bridge = window.ondaDesktop;
+        if (!bridge?.isDesktop || !navigator.mediaDevices?.getDisplayMedia) {
+            return;
+        }
+
+        const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
+        let activeCleanup = null;
+        let sequence = 0;
+
+        function createCaptureId() {
+            if (window.crypto?.randomUUID) {
+                return window.crypto.randomUUID();
+            }
+            sequence += 1;
+            return `onda-${Date.now()}-${sequence}`;
+        }
+
+        function toBytes(data) {
+            if (data instanceof Uint8Array) {
+                return data;
+            }
+            if (data instanceof ArrayBuffer) {
+                return new Uint8Array(data);
+            }
+            if (ArrayBuffer.isView(data)) {
+                return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+            }
+            return null;
+        }
+
+        function appendBytes(pending, bytes) {
+            if (pending.length === 0) {
+                return bytes;
+            }
+            const combined = new Uint8Array(pending.length + bytes.length);
+            combined.set(pending, 0);
+            combined.set(bytes, pending.length);
+            return combined;
+        }
+
+        async function createNativeAudio(selection) {
+            const captureId = createCaptureId();
+            const sampleRate = 48000;
+            const channels = 2;
+            const frameBytes = channels * Float32Array.BYTES_PER_ELEMENT;
+            let pending = new Uint8Array(0);
+            let nextStartTime = 0;
+            let closed = false;
+
+            const context = new AudioContext({ sampleRate, latencyHint: "interactive" });
+            const destination = context.createMediaStreamDestination();
+
+            const unsubscribe = bridge.onAudioData((payload) => {
+                if (closed || payload?.captureId !== captureId) {
+                    return;
+                }
+
+                const bytes = toBytes(payload.data);
+                if (!bytes || bytes.length === 0) {
+                    return;
+                }
+
+                pending = appendBytes(pending, bytes);
+                const usableLength = pending.length - (pending.length % frameBytes);
+                if (usableLength === 0) {
+                    return;
+                }
+
+                const complete = pending.subarray(0, usableLength);
+                pending = pending.subarray(usableLength);
+
+                const aligned = new Uint8Array(complete.length);
+                aligned.set(complete);
+                const floats = new Float32Array(aligned.buffer);
+                const frames = Math.floor(floats.length / channels);
+                if (frames === 0) {
+                    return;
+                }
+
+                const buffer = context.createBuffer(channels, frames, sampleRate);
+                for (let channel = 0; channel < channels; channel += 1) {
+                    const output = buffer.getChannelData(channel);
+                    for (let frame = 0; frame < frames; frame += 1) {
+                        output[frame] = floats[frame * channels + channel];
+                    }
+                }
+
+                const source = context.createBufferSource();
+                source.buffer = buffer;
+                source.connect(destination);
+
+                const now = context.currentTime;
+                if (nextStartTime < now + 0.03 || nextStartTime > now + 0.8) {
+                    nextStartTime = now + 0.09;
+                }
+                source.start(nextStartTime);
+                nextStartTime += buffer.duration;
+            });
+
+            const cleanup = () => {
+                if (closed) {
+                    return;
+                }
+                closed = true;
+                try {
+                    unsubscribe();
+                } catch {
+                    // Ignore a bridge that already closed.
+                }
+                try {
+                    bridge.stopAudio(captureId).catch(() => { });
+                } catch {
+                    // Ignore.
+                }
+                try {
+                    context.close();
+                } catch {
+                    // Ignore.
+                }
+            };
+
+            try {
+                await context.resume();
+                const info = await bridge.startAudio({
+                    captureId,
+                    pid: Number(selection.processId),
+                    mode: selection.audioMode
+                });
+                if (info?.sampleRate && Number(info.sampleRate) !== sampleRate) {
+                    console.warn("O OndaCapture iniciou com uma taxa de amostragem diferente:", info.sampleRate);
+                }
+            } catch (error) {
+                cleanup();
+                throw error;
+            }
+
+            return {
+                track: destination.stream.getAudioTracks()[0],
+                cleanup
+            };
+        }
+
+        async function legacyDesktopVideo(sourceId) {
+            return navigator.mediaDevices.getUserMedia({
+                audio: false,
+                video: {
+                    mandatory: {
+                        chromeMediaSource: "desktop",
+                        chromeMediaSourceId: sourceId,
+                        maxWidth: 3840,
+                        maxHeight: 2160,
+                        maxFrameRate: 60
+                    }
+                }
+            });
+        }
+
+        async function createNativeVideoGenerator(selection) {
+            if (typeof window.MediaStreamTrackGenerator !== "function" ||
+                typeof window.VideoFrame !== "function") {
+                throw new Error("MediaStreamTrackGenerator indisponível.");
+            }
+
+            const captureId = createCaptureId();
+            const width = 960;
+            const height = 540;
+            const fps = 60;
+            const frameDuration = Math.round(1000000 / fps);
+            const generator = new window.MediaStreamTrackGenerator({ kind: "video" });
+            const writer = generator.writable.getWriter();
+            const stream = new window.MediaStream([generator]);
+            const videoTrack = stream.getVideoTracks()[0];
+            let stopped = false;
+            let drawing = false;
+            let queuedFrame = null;
+            let lastTimestamp = 0;
+
+            const drawFrame = async (data) => {
+                if (stopped || drawing) {
+                    queuedFrame = data;
+                    return;
+                }
+
+                drawing = true;
+                let bitmap = null;
+                let sourceFrame = null;
+                let frame = null;
+                try {
+                    if (typeof window.ImageDecoder === "function") {
+                        const decoder = new window.ImageDecoder({
+                            data,
+                            type: "image/jpeg"
+                        });
+                        const result = await decoder.decode();
+                        sourceFrame = result.image;
+                        decoder.close();
+                    } else {
+                        bitmap = await window.createImageBitmap(new Blob([data], { type: "image/jpeg" }));
+                        sourceFrame = bitmap;
+                    }
+
+                    const now = Math.round(performance.now() * 1000);
+                    lastTimestamp = Math.max(lastTimestamp + frameDuration, now);
+                    frame = new window.VideoFrame(sourceFrame, {
+                        timestamp: lastTimestamp,
+                        duration: frameDuration
+                    });
+                    await writer.write(frame);
+                } catch (error) {
+                    if (!stopped) {
+                        console.warn("Quadro de vídeo inválido no gerador de faixa.", error);
+                    }
+                } finally {
+                    frame?.close?.();
+                    sourceFrame?.close?.();
+                    bitmap?.close?.();
+                    drawing = false;
+                    if (queuedFrame && !stopped) {
+                        const next = queuedFrame;
+                        queuedFrame = null;
+                        void drawFrame(next);
+                    }
+                }
+            };
+
+            const unsubscribeFrame = bridge.onNativeVideoFrame((payload) => {
+                if (stopped || payload?.captureId !== captureId || !payload?.data) {
+                    return;
+                }
+                void drawFrame(payload.data);
+            });
+
+            const unsubscribeStopped = bridge.onNativeVideoStopped((payload) => {
+                if (payload?.captureId === captureId) {
+                    cleanup();
+                }
+            });
+
+            const cleanup = () => {
+                if (stopped) {
+                    return;
+                }
+                stopped = true;
+                try {
+                    unsubscribeFrame();
+                } catch {
+                    // Ignore.
+                }
+                try {
+                    unsubscribeStopped();
+                } catch {
+                    // Ignore.
+                }
+                try {
+                    bridge.stopNativeVideo(captureId).catch(() => { });
+                } catch {
+                    // Ignore.
+                }
+                try {
+                    writer.close();
+                } catch {
+                    // Ignore.
+                }
+                try {
+                    generator.stop();
+                } catch {
+                    // Ignore.
+                }
+            };
+
+            try {
+                await bridge.startNativeVideo({
+                    captureId,
+                    sourceId: selection.sourceId,
+                    fps,
+                    width,
+                    height
+                });
+            } catch (error) {
+                cleanup();
+                throw error;
+            }
+
+            if (!videoTrack) {
+                cleanup();
+                throw new Error("O gerador de faixa não criou o vídeo.");
+            }
+
+            stream.__ondaCleanup = cleanup;
+            console.info("Compartilhamento usando MediaStreamTrackGenerator + captura GDI.");
+            return stream;
+        }
+
+        async function createNativeVideo(selection) {
+            if (typeof window.MediaStreamTrackGenerator === "function" &&
+                typeof window.VideoFrame === "function") {
+                try {
+                    return await createNativeVideoGenerator(selection);
+                } catch (error) {
+                    console.warn("Gerador de faixa falhou; usando canvas.", error);
+                }
+            }
+
+            return createNativeVideoCanvas(selection);
+        }
+
+        async function createNativeVideoCanvas(selection) {
+            if (!window.HTMLCanvasElement?.prototype.captureStream) {
+                throw new Error("Canvas captureStream não está disponível.");
+            }
+
+            const captureId = createCaptureId();
+            const width = 1280;
+            const height = 720;
+            const fps = 60;
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const context2d = canvas.getContext("2d", { alpha: false });
+            context2d.fillStyle = "#0c1916";
+            context2d.fillRect(0, 0, width, height);
+
+            const stream = canvas.captureStream(fps);
+            const videoTrack = stream.getVideoTracks()[0];
+            let stopped = false;
+            let drawing = false;
+            let queuedFrame = null;
+
+            const drawFrame = async (data) => {
+                if (stopped || drawing) {
+                    queuedFrame = data;
+                    return;
+                }
+
+                drawing = true;
+                let bitmap = null;
+                try {
+                    bitmap = await window.createImageBitmap(new Blob([data], { type: "image/jpeg" }));
+                    if (!stopped) {
+                        context2d.drawImage(bitmap, 0, 0, width, height);
+                    }
+                } catch (error) {
+                    console.warn("Quadro de vídeo inválido.", error);
+                } finally {
+                    bitmap?.close?.();
+                    drawing = false;
+                    if (queuedFrame && !stopped) {
+                        const next = queuedFrame;
+                        queuedFrame = null;
+                        void drawFrame(next);
+                    }
+                }
+            };
+
+            const unsubscribeFrame = bridge.onNativeVideoFrame((payload) => {
+                if (stopped || payload?.captureId !== captureId || !payload?.data) {
+                    return;
+                }
+                void drawFrame(payload.data);
+            });
+
+            const unsubscribeStopped = bridge.onNativeVideoStopped((payload) => {
+                if (payload?.captureId === captureId) {
+                    cleanup();
+                }
+            });
+
+            const cleanup = () => {
+                if (stopped) {
+                    return;
+                }
+                stopped = true;
+                try {
+                    unsubscribeFrame();
+                } catch {
+                    // Ignore.
+                }
+                try {
+                    unsubscribeStopped();
+                } catch {
+                    // Ignore.
+                }
+                try {
+                    bridge.stopNativeVideo(captureId).catch(() => { });
+                } catch {
+                    // Ignore.
+                }
+                stream.getTracks().forEach((track) => track.stop());
+            };
+
+            try {
+                await bridge.startNativeVideo({
+                    captureId,
+                    sourceId: selection.sourceId,
+                    fps,
+                    width,
+                    height
+                });
+            } catch (error) {
+                cleanup();
+                throw error;
+            }
+
+            if (!videoTrack) {
+                cleanup();
+                throw new Error("A captura nativa não criou a faixa de vídeo.");
+            }
+
+            stream.__ondaCleanup = cleanup;
+            console.info("Compartilhamento usando o capturador nativo de vídeo (GDI).");
+            return stream;
+        }
+
+        async function createThumbnailVideo(selection) {
+            if (!window.HTMLCanvasElement?.prototype.captureStream) {
+                throw new Error("Canvas captureStream não está disponível.");
+            }
+
+            const captureId = createCaptureId();
+            const width = 1280;
+            const height = 720;
+            const fps = 15;
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const context2d = canvas.getContext("2d", { alpha: false });
+            context2d.fillStyle = "#0c1916";
+            context2d.fillRect(0, 0, width, height);
+
+            const stream = canvas.captureStream(fps);
+            const videoTrack = stream.getVideoTracks()[0];
+            let stopped = false;
+            let framePending = false;
+
+            const unsubscribe = bridge.onThumbnailFrame((payload) => {
+                if (stopped || payload?.captureId !== captureId || framePending || !payload?.dataUrl) {
+                    return;
+                }
+
+                framePending = true;
+                const image = new Image();
+                image.onload = () => {
+                    framePending = false;
+                    if (!stopped) {
+                        context2d.drawImage(image, 0, 0, width, height);
+                    }
+                };
+                image.onerror = () => {
+                    framePending = false;
+                };
+                image.src = payload.dataUrl;
+            });
+
+            const cleanup = () => {
+                if (stopped) {
+                    return;
+                }
+                stopped = true;
+                try {
+                    unsubscribe();
+                } catch {
+                    // Ignore.
+                }
+                try {
+                    bridge.stopThumbnailCapture(captureId).catch(() => { });
+                } catch {
+                    // Ignore.
+                }
+                stream.getTracks().forEach((track) => track.stop());
+            };
+
+            try {
+                await bridge.startThumbnailCapture({
+                    captureId,
+                    sourceId: selection.sourceId,
+                    fps,
+                    width,
+                    height
+                });
+            } catch (error) {
+                cleanup();
+                throw error;
+            }
+
+            if (!videoTrack) {
+                cleanup();
+                throw new Error("O modo de compatibilidade não criou a faixa de vídeo.");
+            }
+
+            stream.__ondaCleanup = cleanup;
+            console.info("Compartilhamento usando o modo de compatibilidade por quadros (GDI).");
+            return stream;
+        }
+
+        async function requestDesktopVideo(constraints) {
+            try {
+                return await originalGetDisplayMedia({
+                    ...constraints,
+                    audio: false
+                });
+            } catch (error) {
+                const selection = await bridge.getCaptureSelection().catch(() => null);
+                if (!selection?.sourceId) {
+                    throw error;
+                }
+
+                console.warn("getDisplayMedia falhou; tentando a captura desktop legada.", error);
+                try {
+                    return await legacyDesktopVideo(selection.sourceId);
+                } catch (legacyError) {
+                    console.warn("A captura legada também falhou; usando capturador nativo.", legacyError);
+                }
+
+                try {
+                    return await createNativeVideo(selection);
+                } catch (nativeError) {
+                    console.warn("O capturador nativo falhou; usando quadros GDI.", nativeError);
+                }
+
+                try {
+                    return await createThumbnailVideo(selection);
+                } catch (thumbnailError) {
+                    console.error("A captura por quadros também falhou.", thumbnailError);
+                    throw error;
+                }
+            }
+        }
+
+        async function desktopGetDisplayMedia(constraints = {}) {
+            const previousCleanup = activeCleanup;
+            const videoStream = await requestDesktopVideo(constraints);
+            const videoTrack = videoStream.getVideoTracks()[0];
+            const fallbackCleanup = videoStream.__ondaCleanup;
+
+            if (previousCleanup) {
+                activeCleanup = null;
+                try {
+                    previousCleanup();
+                } catch {
+                    // Ignore cleanup races.
+                }
+            }
+
+            if (!videoTrack) {
+                videoStream.getTracks().forEach((track) => track.stop());
+                fallbackCleanup?.();
+                throw new DOMException("Nenhuma faixa de vídeo foi retornada.", "NotSupportedError");
+            }
+
+            let nativeAudio = null;
+            try {
+                const selection = await bridge.getCaptureSelection();
+                const hasNativeAudio = selection &&
+                    (selection.audioMode === "system" || Number(selection.processId) > 0);
+                if (hasNativeAudio) {
+                    nativeAudio = await createNativeAudio(selection);
+                }
+            } catch (error) {
+                console.warn("Áudio nativo indisponível; compartilhando somente o vídeo.", error);
+            }
+
+            const stream = new MediaStream([videoTrack]);
+            if (nativeAudio?.track) {
+                stream.addTrack(nativeAudio.track);
+            }
+
+            let stopped = false;
+            let timer = null;
+            const cleanup = () => {
+                if (stopped) {
+                    return;
+                }
+                stopped = true;
+                if (timer) {
+                    window.clearInterval(timer);
+                }
+                try {
+                    fallbackCleanup?.();
+                } catch {
+                    // Ignore.
+                }
+                try {
+                    nativeAudio?.cleanup();
+                } catch {
+                    // Ignore.
+                }
+                if (activeCleanup === cleanup) {
+                    activeCleanup = null;
+                }
+            };
+
+            timer = window.setInterval(() => {
+                if (videoTrack.readyState === "ended" ||
+                    stream.getAudioTracks().some((track) => track.readyState === "ended")) {
+                    cleanup();
+                }
+            }, 500);
+
+            videoTrack.addEventListener("ended", cleanup, { once: true });
+            activeCleanup = cleanup;
+            return stream;
+        }
+
+        navigator.mediaDevices.getDisplayMedia = desktopGetDisplayMedia;
+        console.info("Captura desktop ativada: seletor nativo + áudio por aplicativo.");
+    }
+
+    installDesktopCapture();
+
     window.onda = Object.freeze({
         copyText,
         scrollToBottom,
