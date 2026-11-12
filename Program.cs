@@ -2,6 +2,7 @@ using Onda;
 using Onda.Components;
 using Onda.Models;
 using Onda.Services;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.Caching.Memory;
 using System.Text.Json;
 
@@ -77,6 +78,12 @@ app.Use(async (context, next) =>
 });
 
 app.MapStaticAssets();
+var staticContentTypes = new FileExtensionContentTypeProvider();
+staticContentTypes.Mappings[".webmanifest"] = "application/manifest+json";
+app.UseStaticFiles(new StaticFileOptions
+{
+    ContentTypeProvider = staticContentTypes
+});
 app.MapPresenceEndpoints();
 app.MapGet("/health", () => Results.Ok(new
 {
