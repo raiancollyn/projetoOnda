@@ -326,7 +326,11 @@ html[data-theme="dark"] .quality-tabs {
 
 html[data-theme="dark"] .quality-tabs button.is-active {
     background: var(--lime);
-    color: var(--ink);
+    color: #14231f;
+}
+
+html[data-theme="dark"] .quality-tabs button.is-active .onda-icon {
+    color: #14231f;
 }
 
 html[data-theme="dark"] .quality-capability-note {
