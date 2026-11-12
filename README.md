@@ -178,6 +178,14 @@ O app aponta para o LiveKit externo pelas variáveis `LIVEKIT_URL`, `LIVEKIT_API
 
 O cliente **LiveKit JavaScript 2.15.6** é distribuído em `wwwroot/js/vendor/` sob Apache 2.0; o texto da licença está em `wwwroot/js/vendor/livekit-client.LICENSE`. O restante da interface (CSS, ícones SVG e componentes) é próprio do projeto.
 
+## Licença
+
+MIT. Veja [`LICENSE`](LICENSE).
+
+O copyright está como `Raian Collyn`. Se o titular legal for uma empresa, troque
+o nome no arquivo `LICENSE` antes de distribuir.
+
+
 ## Verificações realizadas
 
 - Build limpo em `net10.0`.
