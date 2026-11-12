@@ -1,0 +1,66 @@
+{
+  "id": "/",
+  "name": "Onda — conversas que fluem",
+  "short_name": "Onda",
+  "description": "Salas de voz, tela, webcam e chat direto no navegador.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": [
+    "window-controls-overlay",
+    "standalone"
+  ],
+  "background_color": "#f7f3eb",
+  "theme_color": "#14231f",
+  "orientation": "any",
+  "categories": [
+    "social",
+    "communication",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "/icons/onda-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/onda-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/onda-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/images/screenshots/home-wide.png",
+      "sizes": "1440x1000",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Página inicial do Onda"
+    },
+    {
+      "src": "/images/screenshots/room-wide.png",
+      "sizes": "1440x1000",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Sala do Onda com chat e participantes"
+    },
+    {
+      "src": "/images/screenshots/home-narrow.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Página inicial do Onda no celular"
+    }
+  ]
+}

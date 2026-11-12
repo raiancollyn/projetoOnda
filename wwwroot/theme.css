@@ -284,6 +284,26 @@ html[data-theme="dark"] .camera-toggle-row {
     background: rgba(255, 255, 255, 0.05);
 }
 
+html[data-theme="dark"] .app-card {
+    border-color: rgba(247, 243, 235, 0.1);
+    background: rgba(255, 255, 255, 0.035);
+    box-shadow: 0 1.2rem 3rem rgba(0, 0, 0, 0.18);
+}
+
+html[data-theme="dark"] .app-card-desktop {
+    border-color: rgba(205, 242, 124, 0.28);
+}
+
+html[data-theme="dark"] .app-card-icon {
+    background: rgba(205, 242, 124, 0.16);
+    color: var(--lime);
+}
+
+html[data-theme="dark"] .app-card-web .app-card-icon {
+    background: rgba(247, 243, 235, 0.08);
+    color: var(--cream);
+}
+
 html[data-theme="dark"] .text-input::placeholder {
     color: var(--ink-muted);
 }

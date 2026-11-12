@@ -1246,6 +1246,65 @@
 
     installDesktopCapture();
 
+    let deferredInstallPrompt = null;
+
+    function isStandalonePwa() {
+        return Boolean(
+            window.matchMedia?.("(display-mode: standalone)").matches ||
+            window.navigator.standalone === true
+        );
+    }
+
+    function isIosDevice() {
+        return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+            (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    }
+
+    window.addEventListener("beforeinstallprompt", (event) => {
+        event.preventDefault();
+        deferredInstallPrompt = event;
+    });
+
+    window.addEventListener("appinstalled", () => {
+        deferredInstallPrompt = null;
+    });
+
+    async function installPwa() {
+        if (isStandalonePwa()) {
+            return "installed";
+        }
+
+        if (!deferredInstallPrompt) {
+            return isIosDevice() ? "ios" : "unavailable";
+        }
+
+        const prompt = deferredInstallPrompt;
+        deferredInstallPrompt = null;
+
+        try {
+            prompt.prompt();
+            const choice = await prompt.userChoice;
+            return choice?.outcome || "dismissed";
+        } catch {
+            return "unavailable";
+        }
+    }
+
+    function registerServiceWorker() {
+        if (!("serviceWorker" in navigator) || !window.isSecureContext) {
+            return;
+        }
+
+        navigator.serviceWorker.register("/service-worker.js", { scope: "/" })
+            .catch((error) => console.warn("Onda: service worker não registrado", error));
+    }
+
+    if (document.readyState === "complete") {
+        registerServiceWorker();
+    } else {
+        window.addEventListener("load", registerServiceWorker, { once: true });
+    }
+
     window.onda = Object.freeze({
         copyText,
         scrollToBottom,
@@ -1256,6 +1315,9 @@
         saveScreenQuality,
         toggleFullscreen,
         isFirefox,
-        toggleTheme
+        toggleTheme,
+        installPwa,
+        canInstallPwa: () => Boolean(deferredInstallPrompt) || isStandalonePwa(),
+        isStandalonePwa
     });
 })();

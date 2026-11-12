@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0c1916" />
+    <title>Onda offline</title>
+    <style>
+        :root { color-scheme: dark; }
+        * { box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            margin: 0;
+            display: grid;
+            place-items: center;
+            padding: 2rem;
+            background: radial-gradient(circle at 50% 20%, rgba(205, 242, 124, .14), transparent 35%), #0c1916;
+            color: #f7f3eb;
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        }
+        main { width: min(100%, 28rem); text-align: center; }
+        img { width: 5rem; height: 5rem; border-radius: 1.2rem; }
+        p { color: rgba(247, 243, 235, .68); line-height: 1.6; }
+        a {
+            display: inline-block;
+            margin-top: 1rem;
+            padding: .85rem 1.3rem;
+            border-radius: 999px;
+            background: #cdf27c;
+            color: #14231f;
+            font-weight: 700;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <img src="/icons/onda-192.png" alt="Onda" />
+        <h1>Sem conexão</h1>
+        <p>O Onda precisa de internet para entrar na sala. Verifique sua conexão e tente novamente.</p>
+        <a href="/">Tentar novamente</a>
+    </main>
+</body>
+</html>

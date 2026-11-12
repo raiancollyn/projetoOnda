@@ -7,6 +7,7 @@
 @inject RoomService Rooms
 @inject ToastService Toasts
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Onda — conversas que fluem</PageTitle>
 
@@ -18,6 +19,7 @@
             <nav class="desktop-nav" aria-label="Navegação principal">
                 <a href="#salas">Salas ao vivo</a>
                 <a href="#como-funciona">Como funciona</a>
+                <a href="#apps">Aplicativos</a>
             </nav>
 
             <div class="nav-actions">
@@ -339,6 +341,71 @@
                 </div>
             </div>
         </section>
+
+        <section class="apps-section" id="apps">
+            <div class="shell apps-layout">
+                <div class="apps-copy">
+                    <p class="eyebrow">O MESMO ONDA, DO SEU JEITO</p>
+                    <h2>Escolha como entrar.</h2>
+                    <p>Baixe o app para Windows ou instale a versão web direto pelo navegador. A sala, o link e a conversa são os mesmos.</p>
+                </div>
+
+                <div class="apps-grid">
+                    <article class="app-card app-card-desktop">
+                        <div class="app-card-top">
+                            <span class="app-card-icon"><Icon Name="monitor" Size="22" /></span>
+                            <span class="app-card-tag">WINDOWS</span>
+                        </div>
+                        <h3>Onda Desktop</h3>
+                        <p>Para quem quer captura de tela com WGC, áudio por aplicativo e um atalho próprio no Windows.</p>
+                        <ul class="app-card-list">
+                            <li><Icon Name="check" Size="14" /> Instalador NSIS, sem administrador</li>
+                            <li><Icon Name="check" Size="14" /> Atualizações automáticas</li>
+                            <li><Icon Name="check" Size="14" /> Cerca de 150 MB</li>
+                        </ul>
+                        <a class="button button-primary app-card-action" href="/download/desktop">
+                            <Icon Name="monitor" Size="16" /> Baixar instalador
+                        </a>
+                        <a class="app-card-link"
+                           href="https://github.com/raiancollyn/ondaDesktop/releases"
+                           target="_blank"
+                           rel="noopener noreferrer">
+                            Ver todas as versões <Icon Name="external" Size="13" />
+                        </a>
+                    </article>
+
+                    <article class="app-card app-card-web">
+                        <div class="app-card-top">
+                            <span class="app-card-icon"><Icon Name="globe" Size="22" /></span>
+                            <span class="app-card-tag">NAVEGADOR</span>
+                        </div>
+                        <h3>Web app</h3>
+                        <p>Não quer baixar executável? Instale o Onda pelo navegador e abra em uma janela própria, como um aplicativo.</p>
+                        <ul class="app-card-list">
+                            <li><Icon Name="check" Size="14" /> Sem download de executável</li>
+                            <li><Icon Name="check" Size="14" /> Atualiza sozinho com o site</li>
+                            <li><Icon Name="check" Size="14" /> Atalho na tela inicial ou área de trabalho</li>
+                        </ul>
+                        <button type="button"
+                                class="button button-accent app-card-action"
+                                @onclick="InstallWebAppAsync"
+                                disabled="@_pwaBusy">
+                            @if (_pwaBusy)
+                            {
+                                <span class="button-spinner" aria-hidden="true"></span>
+                                <span>Instalando...</span>
+                            }
+                            else
+                            {
+                                <Icon Name="download" Size="16" />
+                                <span>Instalar web app</span>
+                            }
+                        </button>
+                        <span class="app-card-note">@_pwaHint</span>
+                    </article>
+                </div>
+            </div>
+        </section>
     </main>
 
     <footer class="site-footer">
@@ -526,6 +593,8 @@
     private bool _showPassword;
     private string? _createError;
     private bool _createBusy;
+    private bool _pwaBusy;
+    private string _pwaHint = "Instale sem baixar executável. O navegador mantém o app atualizado.";
 
     private bool _showNameDialog;
     private string _nameDraft = string.Empty;
@@ -538,6 +607,63 @@
         _isLoading = false;
         Rooms.LobbyChanged += HandleLobbyChanged;
         Rooms.RoomChanged += HandleRoomChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            if (await JS.InvokeAsync<bool>("onda.isStandalonePwa"))
+            {
+                _pwaHint = "Você já está usando o web app instalado.";
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException)
+        {
+            // The browser may not expose the install state.
+        }
+    }
+
+    private async Task InstallWebAppAsync()
+    {
+        if (_pwaBusy)
+        {
+            return;
+        }
+
+        _pwaBusy = true;
+        try
+        {
+            var result = await JS.InvokeAsync<string>("onda.installPwa");
+            _pwaHint = result switch
+            {
+                "accepted" => "Instalação iniciada. Confirme no navegador.",
+                "dismissed" => "Instalação cancelada. Você pode tentar de novo quando quiser.",
+                "installed" => "Você já está usando o web app instalado.",
+                "ios" => "No iPhone ou iPad, toque em Compartilhar → Adicionar à Tela de Início.",
+                _ => "No menu do navegador, escolha “Instalar Onda” ou “Adicionar à tela inicial”."
+            };
+
+            if (result == "accepted")
+            {
+                Toasts.Show("Instalação do web app iniciada.", ToastKind.Info);
+            }
+        }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException)
+        {
+            _pwaHint = "Não foi possível abrir a instalação. Use o menu do navegador para instalar o Onda.";
+        }
+        finally
+        {
+            _pwaBusy = false;
+            StateHasChanged();
+        }
     }
 
     private void HandleLobbyChanged()
