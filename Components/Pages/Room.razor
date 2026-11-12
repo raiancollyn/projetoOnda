@@ -1142,6 +1142,7 @@ else
     private bool _joining;
     private bool _leaveBusy;
     private bool _disposed;
+    private bool _wakeLockRequested;
     private bool _sessionExpired;
 
     private string _gatePassword = string.Empty;
@@ -1337,6 +1338,19 @@ else
             }
 
             return;
+        }
+
+        if (!_wakeLockRequested)
+        {
+            _wakeLockRequested = true;
+            try
+            {
+                await JS.InvokeVoidAsync("onda.setWakeLock", true);
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                // A tela pode continuar apagando em navegadores sem Wake Lock.
+            }
         }
 
         if (!_browserChecked)
@@ -2527,6 +2541,8 @@ else
         _leaveBusy = true;
         try
         {
+            await ReleaseWakeLockAsync();
+
             if (_jsModule is not null)
             {
                 try
@@ -2546,6 +2562,19 @@ else
         {
             _leaveBusy = false;
             Nav.NavigateTo("/");
+        }
+    }
+
+    private async Task ReleaseWakeLockAsync()
+    {
+        _wakeLockRequested = false;
+        try
+        {
+            await JS.InvokeVoidAsync("onda.setWakeLock", false);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException)
+        {
+            // Navigation or circuit teardown can make JS unavailable.
         }
     }
 
@@ -2726,6 +2755,8 @@ else
             Rooms.LeaveRoom(Code, Guest.Id);
             _joined = false;
         }
+
+        await ReleaseWakeLockAsync();
 
         if (_jsModule is not null)
         {

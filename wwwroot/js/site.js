@@ -1277,6 +1277,57 @@
         };
     }
 
+    let wakeLockSentinel = null;
+    let wakeLockRequested = false;
+
+    async function requestWakeLock() {
+        if (!wakeLockRequested ||
+            document.visibilityState !== "visible" ||
+            !("wakeLock" in navigator)) {
+            return false;
+        }
+
+        if (wakeLockSentinel && !wakeLockSentinel.released) {
+            return true;
+        }
+
+        try {
+            wakeLockSentinel = await navigator.wakeLock.request("screen");
+            wakeLockSentinel.addEventListener("release", () => {
+                wakeLockSentinel = null;
+            }, { once: true });
+            return true;
+        } catch {
+            wakeLockSentinel = null;
+            return false;
+        }
+    }
+
+    async function setWakeLock(enabled) {
+        wakeLockRequested = Boolean(enabled);
+
+        if (wakeLockRequested) {
+            return requestWakeLock();
+        }
+
+        if (wakeLockSentinel) {
+            try {
+                await wakeLockSentinel.release();
+            } catch {
+                // The browser may have released it already.
+            }
+        }
+
+        wakeLockSentinel = null;
+        return true;
+    }
+
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && wakeLockRequested) {
+            void requestWakeLock();
+        }
+    });
+
     window.addEventListener("beforeinstallprompt", (event) => {
         event.preventDefault();
         deferredInstallPrompt = event;
@@ -1372,6 +1423,7 @@
         installPwa,
         canInstallPwa: () => Boolean(deferredInstallPrompt) || isStandalonePwa(),
         isStandalonePwa,
-        getInstallContext
+        getInstallContext,
+        setWakeLock
     });
 })();

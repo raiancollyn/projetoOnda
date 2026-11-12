@@ -195,6 +195,13 @@ O app aponta para o LiveKit externo pelas variáveis `LIVEKIT_URL`, `LIVEKIT_API
 - **Docker não estava instalado no ambiente de desenvolvimento**: os arquivos de container/eggs foram validados sintaticamente e escritos para uma VPS Linux, mas não puderam ser executados nesse ambiente. A integração com LiveKit foi testada de ponta a ponta usando um servidor LiveKit local real.
 - **Codec**: o navegador/SFU pode fazer fallback. A preferência é uma dica, não uma garantia de codec.
 
+### Chamadas no celular e em segundo plano
+
+- O PWA instalado **não ganha execução contínua**: Android e, principalmente, iOS suspendem abas/web apps em segundo plano. Service workers não mantêm WebRTC nem WebSocket ativos.
+- Enquanto a pessoa está na sala, o app usa a **Screen Wake Lock API** para evitar o desligamento automático da tela. Isso reduz muito a interrupção por inatividade, mas não impede o usuário de bloquear o aparelho manualmente.
+- Se o sistema suspender a página por mais de dois minutos, a presença expira; depois de mais 30 segundos sem ninguém, a sala é apagada.
+- Para manter microfone/chamada ativos com a tela bloqueada ou o app realmente em segundo plano, é necessário um **app nativo** com serviço de primeiro plano no Android e modo de áudio em segundo plano no iOS. Isso não é possível de garantir em PWA.
+
 ## Terceiros
 
 O cliente **LiveKit JavaScript 2.15.6** é distribuído em `wwwroot/js/vendor/` sob Apache 2.0; o texto da licença está em `wwwroot/js/vendor/livekit-client.LICENSE`. O restante da interface (CSS, ícones SVG e componentes) é próprio do projeto.
