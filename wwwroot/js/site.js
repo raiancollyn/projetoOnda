@@ -71,6 +71,12 @@
             meta.setAttribute("content", nextTheme === "dark" ? "#0c1916" : "#f7f3eb");
         }
 
+        try {
+            window.Capacitor?.Plugins?.OndaMedia?.setTheme({ theme: nextTheme });
+        } catch {
+            // The native bridge only exists inside the Android app.
+        }
+
         if (persist) {
             try {
                 if (nextPreference === "system") {
@@ -1501,6 +1507,24 @@
         return plugin.setMic({ enabled: Boolean(enabled) });
     }
 
+    async function getNativeAudioDevices() {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            throw new Error("Ponte nativa de mídia indisponível.");
+        }
+
+        return JSON.stringify(await plugin.getAudioDevices());
+    }
+
+    async function selectNativeAudioDevice(id) {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            throw new Error("Ponte nativa de mídia indisponível.");
+        }
+
+        return plugin.selectAudioDevice({ id });
+    }
+
     let presenceHeartbeatTimer = null;
     let presenceHeartbeatRoom = null;
     let presenceHeartbeatGuest = null;
@@ -1572,6 +1596,8 @@
         isNativeMobile,
         startNativeCall,
         stopNativeCall,
-        setNativeMic
+        setNativeMic,
+        getNativeAudioDevices,
+        selectNativeAudioDevice
     });
 })();

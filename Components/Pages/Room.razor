@@ -217,6 +217,16 @@ else
                         <span class="header-button-label">Apps</span>
                     </button>
                 }
+                @if (_nativeMedia)
+                {
+                    <button type="button" class="room-header-button"
+                            @onclick="OpenAudioRouteDialogAsync"
+                            aria-label="Escolher saída de áudio"
+                            title="Saída de áudio">
+                        <Icon Name="headphones" Size="16" />
+                        <span class="header-button-label">Áudio</span>
+                    </button>
+                }
                 <button type="button" class="room-header-button" @onclick="OpenQualityDialog"
                         aria-label="Ajustes de qualidade de tela e câmera"
                         title="@($"Qualidade — tela: {_screenQuality.Summary}; câmera: {_cameraQuality.Summary}")">
@@ -815,6 +825,47 @@ else
     </div>
 }
 
+<Modal IsOpen="_showAudioRouteDialog"
+       Title="Saída de áudio"
+       Eyebrow="CHAMADA"
+       OnClose="CloseAudioRouteDialog">
+    <div class="audio-route-list">
+        @if (_audioRouteBusy)
+        {
+            <p class="audio-route-loading">Atualizando rotas de áudio...</p>
+        }
+        else if (_audioRouteDevices.Count == 0)
+        {
+            <p class="audio-route-loading">Nenhuma rota de áudio disponível.</p>
+        }
+        else
+        {
+            @foreach (var device in _audioRouteDevices)
+            {
+                <button type="button"
+                        class="audio-route-option @(device.Selected ? "is-selected" : null)"
+                        @onclick="() => SelectAudioRouteAsync(device)"
+                        disabled="@(_audioRouteBusy)">
+                    <span class="audio-route-icon">
+                        <Icon Name="@(device.Id == "Speakerphone" ? "volume" : "headphones")" Size="19" />
+                    </span>
+                    <span class="audio-route-copy">
+                        <strong>@device.Label</strong>
+                        <small>@(device.Selected ? "Em uso agora" : "Usar esta saída")</small>
+                    </span>
+                    @if (device.Selected)
+                    {
+                        <span class="audio-route-check"><Icon Name="check" Size="15" /></span>
+                    }
+                </button>
+            }
+        }
+    </div>
+    <p class="quality-note">
+        Conecte o Bluetooth ou o fone com fio antes de abrir esta lista. A troca vale só para esta chamada.
+    </p>
+</Modal>
+
 <Modal IsOpen="_showNameDialog"
        Title="Como você quer aparecer?"
        Eyebrow="SEU NOME"
@@ -1276,6 +1327,9 @@ else
     private string? _nameError;
 
     private bool _showQualityDialog;
+    private bool _showAudioRouteDialog;
+    private bool _audioRouteBusy;
+    private IReadOnlyList<NativeAudioDeviceView> _audioRouteDevices = [];
     private bool _showInstallDialog;
     private bool _installContextLoaded;
     private bool _installDesktopApp;
@@ -3082,6 +3136,66 @@ else
 
     private void CloseQualityDialog() => _showQualityDialog = false;
 
+    private async Task OpenAudioRouteDialogAsync()
+    {
+        if (!_nativeMedia)
+        {
+            return;
+        }
+
+        _showAudioRouteDialog = true;
+        await RefreshAudioRouteAsync();
+    }
+
+    private void CloseAudioRouteDialog() => _showAudioRouteDialog = false;
+
+    private async Task RefreshAudioRouteAsync()
+    {
+        _audioRouteBusy = true;
+        StateHasChanged();
+        try
+        {
+            var json = await JS.InvokeAsync<string>("onda.getNativeAudioDevices");
+            var response = JsonSerializer.Deserialize<NativeAudioRouteResponse>(json, QualityJsonOptions);
+            _audioRouteDevices = response?.Devices ?? [];
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or JsonException)
+        {
+            _audioRouteDevices = [];
+            Toasts.Show("Não foi possível listar as saídas de áudio.", ToastKind.Error);
+        }
+        finally
+        {
+            _audioRouteBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SelectAudioRouteAsync(NativeAudioDeviceView device)
+    {
+        if (!_nativeMedia || _audioRouteBusy)
+        {
+            return;
+        }
+
+        _audioRouteBusy = true;
+        StateHasChanged();
+        try
+        {
+            await JS.InvokeVoidAsync("onda.selectNativeAudioDevice", device.Id);
+            await RefreshAudioRouteAsync();
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            Toasts.Show("Não foi possível trocar a saída de áudio.", ToastKind.Error);
+        }
+        finally
+        {
+            _audioRouteBusy = false;
+            StateHasChanged();
+        }
+    }
+
     private void ApplyQualityPreset(string preset)
     {
         _qualityDraft = ScreenShareQuality.ForPreset(preset);
@@ -3295,6 +3409,10 @@ else
     }
 
     private sealed record CameraDeviceView(string DeviceId, string Label, string Facing);
+
+    private sealed record NativeAudioDeviceView(string Id, string Label, bool Selected);
+
+    private sealed record NativeAudioRouteResponse(List<NativeAudioDeviceView>? Devices);
 
     private sealed record CameraOptionsView(
         IReadOnlyList<CameraDeviceView> Devices,

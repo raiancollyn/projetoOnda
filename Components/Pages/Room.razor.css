@@ -3675,3 +3675,89 @@
 .quality-preset:disabled small::after {
     content: " · acima do limite";
 }
+
+.audio-route-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.audio-route-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.28);
+    color: var(--ink);
+    text-align: left;
+    cursor: pointer;
+}
+
+.audio-route-option:hover {
+    border-color: var(--line-strong);
+}
+
+.audio-route-option.is-selected {
+    border-color: var(--lime);
+    background: rgba(205, 242, 124, 0.2);
+}
+
+.audio-route-icon {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    background: rgba(205, 242, 124, 0.2);
+    color: var(--ink);
+    flex: 0 0 auto;
+}
+
+.audio-route-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.audio-route-copy strong {
+    font-size: 0.92rem;
+}
+
+.audio-route-copy small {
+    color: var(--ink-muted);
+    font-size: 0.74rem;
+}
+
+.audio-route-check {
+    margin-left: auto;
+    color: var(--ink);
+}
+
+.audio-route-loading {
+    margin: 0;
+    padding: 18px 8px;
+    color: var(--ink-muted);
+    text-align: center;
+}
+
+html[data-theme="dark"] .audio-route-option {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+html[data-theme="dark"] .audio-route-option.is-selected {
+    border-color: var(--lime);
+    background: rgba(205, 242, 124, 0.12);
+}
+
+html[data-theme="dark"] .audio-route-icon {
+    background: rgba(205, 242, 124, 0.1);
+    color: var(--lime);
+}
+
+html[data-theme="dark"] .audio-route-check {
+    color: var(--lime);
+}
