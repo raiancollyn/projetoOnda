@@ -369,10 +369,11 @@ html[data-theme="dark"] .suggestion-chip {
     color: var(--ink-soft);
 }
 
-html[data-theme="dark"] .suggestion-chip:hover {
-    border-color: var(--line-strong);
-    background: rgba(255, 255, 255, 0.09);
-    color: var(--cream);
+html[data-theme="dark"] .suggestion-chip:hover,
+html[data-theme="dark"] .suggestion-chip:focus-visible {
+    border-color: rgba(205, 242, 124, 0.42);
+    background: rgba(205, 242, 124, 0.1);
+    color: var(--ink);
 }
 
 html[data-theme="dark"] .privacy-option {
