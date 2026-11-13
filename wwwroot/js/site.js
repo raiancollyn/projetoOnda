@@ -1456,6 +1456,51 @@
         window.addEventListener("load", registerServiceWorker, { once: true });
     }
 
+    function nativeMediaPlugin() {
+        return window.Capacitor?.Plugins?.OndaMedia || null;
+    }
+
+    function isNativeMobile() {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            return false;
+        }
+
+        try {
+            return window.Capacitor?.isNativePlatform?.() !== false &&
+                window.Capacitor?.getPlatform?.() === "android";
+        } catch {
+            return true;
+        }
+    }
+
+    async function startNativeCall(url, token) {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            throw new Error("Ponte nativa de mídia indisponível.");
+        }
+
+        return plugin.startCall({ url, token });
+    }
+
+    async function stopNativeCall() {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            return;
+        }
+
+        return plugin.stopCallService();
+    }
+
+    async function setNativeMic(enabled) {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            throw new Error("Ponte nativa de mídia indisponível.");
+        }
+
+        return plugin.setMic({ enabled: Boolean(enabled) });
+    }
+
     window.onda = Object.freeze({
         copyText,
         scrollToBottom,
@@ -1474,6 +1519,10 @@
         canInstallPwa: () => Boolean(deferredInstallPrompt) || isStandalonePwa(),
         isStandalonePwa,
         getInstallContext,
-        setWakeLock
+        setWakeLock,
+        isNativeMobile,
+        startNativeCall,
+        stopNativeCall,
+        setNativeMic
     });
 })();

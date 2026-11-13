@@ -478,7 +478,7 @@ else
                         <button type="button"
                                 class="dock-control @(_localCameraOn ? "is-on" : "is-off")"
                                 @onclick="ToggleCameraAsync"
-                                disabled="@(!_jsReady || _actionPending is not null)"
+                                disabled="@(!_jsReady || _nativeMedia || _actionPending is not null)"
                                 aria-pressed="@(_localCameraOn ? "true" : "false")"
                                 aria-label="@(_localCameraOn ? "Desligar câmera" : "Ligar câmera")"
                                 title="@(_localCameraOn ? "Desligar câmera" : "Ligar câmera")">
@@ -510,7 +510,7 @@ else
                         <button type="button"
                                 class="dock-control dock-screen-control @(_localScreenOn ? "is-active" : "is-off")"
                                 @onclick="ToggleScreenAsync"
-                                disabled="@(!_jsReady || _actionPending is not null)"
+                                disabled="@(!_jsReady || _nativeMedia || _actionPending is not null)"
                                 aria-pressed="@(_localScreenOn ? "true" : "false")"
                                 aria-label="@(_localScreenOn ? "Parar compartilhamento de tela" : "Compartilhar tela")"
                                 title="@(_localScreenOn ? "Parar compartilhamento de tela" : "Compartilhar tela")">
@@ -1233,6 +1233,7 @@ else
     private IJSObjectReference? _jsModule;
     private DotNetObjectReference<Room>? _dotNetRef;
     private bool _jsReady;
+    private bool _nativeMedia;
     private bool _jsInitializing;
     private string? _jsError;
     private bool _audioBlocked;
@@ -1627,6 +1628,41 @@ else
                 quality = ToJsQuality(_screenQuality),
                 cameraQuality = ToJsCameraQuality(_cameraQuality)
             };
+
+            var nativeMobile = false;
+            if (useLiveKit &&
+                !string.IsNullOrWhiteSpace(livekitUrl) &&
+                !string.IsNullOrWhiteSpace(livekitToken))
+            {
+                try
+                {
+                    nativeMobile = await JS.InvokeAsync<bool>("onda.isNativeMobile");
+                }
+                catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+                {
+                    nativeMobile = false;
+                }
+            }
+
+            if (nativeMobile && livekitUrl is not null && livekitToken is not null)
+            {
+                try
+                {
+                    await JS.InvokeVoidAsync("onda.startNativeCall", livekitUrl, livekitToken);
+                    _nativeMedia = true;
+                    _jsReady = true;
+                    await OnLocalMediaStateChanged(true, true, false, false, false);
+                    return;
+                }
+                catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+                {
+                    _nativeMedia = false;
+                    Toasts.Show(
+                        "Não foi possível iniciar a chamada nativa. Continuando pelo navegador.",
+                        ToastKind.Error,
+                        7000);
+                }
+            }
 
             var moduleFile = useLiveKit ? "livekit-room.js" : "webrtc.js";
             var modulePath = new Uri(new Uri(Nav.BaseUri), $"js/{moduleFile}").AbsolutePath;
@@ -2190,7 +2226,33 @@ else
 
     private async Task ToggleMicrophoneAsync()
     {
-        if (_jsModule is null || _actionPending is not null)
+        if (_actionPending is not null)
+        {
+            return;
+        }
+
+        if (_nativeMedia)
+        {
+            _actionPending = "mic";
+            var nextMic = !_localMicOn;
+            try
+            {
+                await JS.InvokeVoidAsync("onda.setNativeMic", nextMic);
+                await OnLocalMediaStateChanged(nextMic, true, false, false, false);
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                Toasts.Show("Não foi possível alterar o microfone.", ToastKind.Error);
+            }
+            finally
+            {
+                _actionPending = null;
+                StateHasChanged();
+            }
+            return;
+        }
+
+        if (_jsModule is null)
         {
             return;
         }
@@ -2828,6 +2890,7 @@ else
         try
         {
             await ReleaseWakeLockAsync();
+            await StopNativeCallAsync();
 
             if (_jsModule is not null)
             {
@@ -2861,6 +2924,24 @@ else
         catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException)
         {
             // Navigation or circuit teardown can make JS unavailable.
+        }
+    }
+
+    private async Task StopNativeCallAsync()
+    {
+        if (!_nativeMedia)
+        {
+            return;
+        }
+
+        _nativeMedia = false;
+        try
+        {
+            await JS.InvokeVoidAsync("onda.stopNativeCall");
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException)
+        {
+            // The native service is also stopped when the app process exits.
         }
     }
 
@@ -3152,6 +3233,7 @@ else
         }
 
         await ReleaseWakeLockAsync();
+        await StopNativeCallAsync();
 
         if (_jsModule is not null)
         {
