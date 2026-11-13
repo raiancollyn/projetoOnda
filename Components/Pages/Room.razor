@@ -1234,6 +1234,7 @@ else
     private DotNetObjectReference<Room>? _dotNetRef;
     private bool _jsReady;
     private bool _nativeMedia;
+    private bool _presenceHeartbeatStarted;
     private bool _jsInitializing;
     private string? _jsError;
     private bool _audioBlocked;
@@ -1506,6 +1507,19 @@ else
             }
         }
 
+        if (_joined && !_presenceHeartbeatStarted)
+        {
+            _presenceHeartbeatStarted = true;
+            try
+            {
+                await JS.InvokeVoidAsync("onda.startPresenceHeartbeat", Code, Guest.Id);
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                // Native mode still sends its own heartbeat.
+            }
+        }
+
         if (_disposed || !_joined)
         {
             if (_scrollChatPending)
@@ -1648,7 +1662,13 @@ else
             {
                 try
                 {
-                    await JS.InvokeVoidAsync("onda.startNativeCall", livekitUrl, livekitToken);
+                    await JS.InvokeVoidAsync(
+                        "onda.startNativeCall",
+                        livekitUrl,
+                        livekitToken,
+                        Code,
+                        Guest.Id,
+                        Nav.BaseUri);
                     _nativeMedia = true;
                     _jsReady = true;
                     await OnLocalMediaStateChanged(true, true, false, false, false);
@@ -2890,6 +2910,7 @@ else
         try
         {
             await ReleaseWakeLockAsync();
+            await StopPresenceHeartbeatAsync();
             await StopNativeCallAsync();
 
             if (_jsModule is not null)
@@ -2942,6 +2963,19 @@ else
         catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException)
         {
             // The native service is also stopped when the app process exits.
+        }
+    }
+
+    private async Task StopPresenceHeartbeatAsync()
+    {
+        _presenceHeartbeatStarted = false;
+        try
+        {
+            await JS.InvokeVoidAsync("onda.stopPresenceHeartbeat");
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException)
+        {
+            // The native service handles presence in background mode.
         }
     }
 
@@ -3233,6 +3267,7 @@ else
         }
 
         await ReleaseWakeLockAsync();
+        await StopPresenceHeartbeatAsync();
         await StopNativeCallAsync();
 
         if (_jsModule is not null)

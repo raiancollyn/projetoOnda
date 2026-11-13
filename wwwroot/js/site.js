@@ -1474,13 +1474,13 @@
         }
     }
 
-    async function startNativeCall(url, token) {
+    async function startNativeCall(url, token, roomId, guestId, presenceUrl) {
         const plugin = nativeMediaPlugin();
         if (!plugin) {
             throw new Error("Ponte nativa de mídia indisponível.");
         }
 
-        return plugin.startCall({ url, token });
+        return plugin.startCall({ url, token, roomId, guestId, presenceUrl });
     }
 
     async function stopNativeCall() {
@@ -1501,6 +1501,53 @@
         return plugin.setMic({ enabled: Boolean(enabled) });
     }
 
+    let presenceHeartbeatTimer = null;
+    let presenceHeartbeatRoom = null;
+    let presenceHeartbeatGuest = null;
+
+    function stopPresenceHeartbeat() {
+        if (presenceHeartbeatTimer) {
+            clearTimeout(presenceHeartbeatTimer);
+            presenceHeartbeatTimer = null;
+        }
+        presenceHeartbeatRoom = null;
+        presenceHeartbeatGuest = null;
+    }
+
+    function startPresenceHeartbeat(roomId, guestId) {
+        stopPresenceHeartbeat();
+        if (!roomId || !guestId) {
+            return;
+        }
+
+        presenceHeartbeatRoom = roomId;
+        presenceHeartbeatGuest = guestId;
+        const ping = async () => {
+            if (!presenceHeartbeatRoom || !presenceHeartbeatGuest) {
+                return;
+            }
+
+            try {
+                await fetch("/api/presence/heartbeat", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        roomId: presenceHeartbeatRoom,
+                        guestId: presenceHeartbeatGuest
+                    }),
+                    keepalive: true
+                });
+            } catch {
+                // The janitor will remove the participant if the app disappears.
+            }
+
+            if (presenceHeartbeatRoom) {
+                presenceHeartbeatTimer = setTimeout(ping, 30000);
+            }
+        };
+
+        void ping();
+    }
     window.onda = Object.freeze({
         copyText,
         scrollToBottom,
@@ -1520,6 +1567,8 @@
         isStandalonePwa,
         getInstallContext,
         setWakeLock,
+        startPresenceHeartbeat,
+        stopPresenceHeartbeat,
         isNativeMobile,
         startNativeCall,
         stopNativeCall,

@@ -23,6 +23,8 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<RoomService>();
+builder.Services.AddSingleton<GuestIdentityStore>();
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<GuestSession>();
 builder.Services.AddScoped<ToastService>();
 builder.Services.AddHostedService<RoomJanitor>();
@@ -66,6 +68,30 @@ if (!app.Environment.IsDevelopment() &&
 {
     app.UseHttpsRedirection();
 }
+
+app.Use(async (context, next) =>
+{
+    var store = context.RequestServices.GetRequiredService<GuestIdentityStore>();
+    var token = context.Request.Cookies[GuestIdentityStore.CookieName];
+    if (string.IsNullOrWhiteSpace(token))
+    {
+        store.CreateForNewToken(out token);
+        context.Response.Cookies.Append(
+            GuestIdentityStore.CookieName,
+            token,
+            new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = context.Request.IsHttps,
+                SameSite = SameSiteMode.Lax,
+                Path = "/",
+                Expires = DateTimeOffset.UtcNow.AddYears(1)
+            });
+    }
+
+    context.Items[GuestIdentityStore.CookieName] = token;
+    await next();
+});
 
 app.UseAntiforgery();
 
