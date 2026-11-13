@@ -1,0 +1,24 @@
+.room-timer-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.55rem;
+    border: 1px solid rgba(247, 243, 235, 0.1);
+    border-radius: 999px;
+    color: rgba(247, 243, 235, 0.62);
+    font-size: 0.62rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+.room-timer-badge .onda-icon {
+    color: rgba(205, 242, 124, 0.72);
+}
+@media (max-width: 720px) {
+    .room-timer-badge {
+        padding: 0.24rem 0.42rem;
+        font-size: 0.56rem;
+    }
+}

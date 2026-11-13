@@ -1,0 +1,74 @@
+@implements IAsyncDisposable
+
+<span class="room-timer-badge"
+      title="Tempo desde a criação da sala"
+      aria-label="@($"Sala no ar há {_age}")">
+    <Icon Name="clock" Size="12" />
+    <span>@_age</span>
+</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public DateTimeOffset CreatedAt { get; set; }
+
+    private string _age = "00:00:00";
+    private CancellationTokenSource? _timerCts;
+
+    protected override void OnInitialized()
+    {
+        UpdateAge();
+        _timerCts = new CancellationTokenSource();
+        _ = RunTimerAsync(_timerCts.Token);
+    }
+
+    protected override void OnParametersSet()
+    {
+        UpdateAge();
+    }
+
+    private void UpdateAge()
+    {
+        var elapsed = DateTimeOffset.UtcNow - CreatedAt;
+        if (elapsed < TimeSpan.Zero)
+        {
+            elapsed = TimeSpan.Zero;
+        }
+
+        var days = (int)elapsed.TotalDays;
+        _age = days > 0
+            ? $"{days}d {elapsed.Hours:00}:{elapsed.Minutes:00}:{elapsed.Seconds:00}"
+            : $"{(int)elapsed.TotalHours:00}:{elapsed.Minutes:00}:{elapsed.Seconds:00}";
+    }
+
+    private async Task RunTimerAsync(CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                await Task.Delay(1000, token);
+                await InvokeAsync(() =>
+                {
+                    UpdateAge();
+                    StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Component disposed.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Circuit already gone.
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _timerCts?.Cancel();
+        _timerCts?.Dispose();
+        _timerCts = null;
+        return ValueTask.CompletedTask;
+    }
+}
