@@ -2237,6 +2237,7 @@ else
         if (_self is null)
         {
             _sessionExpired = true;
+            _ = DisableRoomExitGuardAsync();
             return;
         }
     }
@@ -3245,14 +3246,15 @@ else
         }
     }
 
-    private Task GoHomeAsync()
+    private async Task GoHomeAsync()
     {
+        await DisableRoomExitGuardAsync();
         Nav.NavigateTo("/");
-        return Task.CompletedTask;
     }
 
     private async Task ReloadPageAsync()
     {
+        await DisableRoomExitGuardAsync();
         try
         {
             await JS.InvokeVoidAsync("onda.reloadPage");
