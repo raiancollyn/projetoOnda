@@ -217,12 +217,12 @@ else
                         <span class="header-button-label">Apps</span>
                     </button>
                 }
-                @if (_nativeMedia)
+                @if (_nativeMedia || _isSfu)
                 {
                     <button type="button" class="room-header-button"
                             @onclick="OpenAudioRouteDialogAsync"
-                            aria-label="Escolher saída de áudio"
-                            title="Saída de áudio">
+                            aria-label="Ajustes de áudio"
+                            title="Ajustes de áudio">
                         <Icon Name="headphones" Size="16" />
                         <span class="header-button-label">Áudio</span>
                     </button>
@@ -819,6 +819,9 @@ else
                     <button type="button" class="button button-accent" @onclick="ReloadPageAsync">
                         <Icon Name="wave" Size="17" /> Entrar novamente
                     </button>
+                    <button type="button" class="button button-ghost" @onclick="GoHomeAsync">
+                        Voltar ao início
+                    </button>
                 </div>
             </div>
         }
@@ -826,44 +829,135 @@ else
 }
 
 <Modal IsOpen="_showAudioRouteDialog"
-       Title="Saída de áudio"
+       Title="Áudio da chamada"
        Eyebrow="CHAMADA"
        OnClose="CloseAudioRouteDialog">
-    <div class="audio-route-list">
-        @if (_audioRouteBusy)
-        {
-            <p class="audio-route-loading">Atualizando rotas de áudio...</p>
-        }
-        else if (_audioRouteDevices.Count == 0)
-        {
-            <p class="audio-route-loading">Nenhuma rota de áudio disponível.</p>
-        }
-        else
-        {
-            @foreach (var device in _audioRouteDevices)
+    @if (_audioRouteBusy)
+    {
+        <p class="audio-route-loading">Atualizando dispositivos de áudio...</p>
+    }
+    else if (_audioNativeMode)
+    {
+        <div class="audio-route-list">
+            @if (_audioRouteDevices.Count == 0)
             {
-                <button type="button"
-                        class="audio-route-option @(device.Selected ? "is-selected" : null)"
-                        @onclick="() => SelectAudioRouteAsync(device)"
-                        disabled="@(_audioRouteBusy)">
-                    <span class="audio-route-icon">
-                        <Icon Name="@(device.Id == "Speakerphone" ? "volume" : "headphones")" Size="19" />
-                    </span>
-                    <span class="audio-route-copy">
-                        <strong>@device.Label</strong>
-                        <small>@(device.Selected ? "Em uso agora" : "Usar esta saída")</small>
-                    </span>
-                    @if (device.Selected)
-                    {
-                        <span class="audio-route-check"><Icon Name="check" Size="15" /></span>
-                    }
-                </button>
+                <p class="audio-route-loading">Nenhuma rota de áudio disponível.</p>
             }
-        }
-    </div>
-    <p class="quality-note">
-        Conecte o Bluetooth ou o fone com fio antes de abrir esta lista. A troca vale só para esta chamada.
-    </p>
+            else
+            {
+                @foreach (var device in _audioRouteDevices)
+                {
+                    <button type="button"
+                            class="audio-route-option @(device.Selected ? "is-selected" : null)"
+                            @onclick="() => SelectAudioRouteAsync(device)"
+                            disabled="@(_audioRouteBusy)">
+                        <span class="audio-route-icon">
+                            <Icon Name="@(device.Id == "Speakerphone" ? "volume" : "headphones")" Size="19" />
+                        </span>
+                        <span class="audio-route-copy">
+                            <strong>@device.Label</strong>
+                            <small>@(device.Selected ? "Em uso agora" : "Usar esta saída")</small>
+                        </span>
+                        @if (device.Selected)
+                        {
+                            <span class="audio-route-check"><Icon Name="check" Size="15" /></span>
+                        }
+                    </button>
+                }
+            }
+        </div>
+        <div class="audio-volume-row">
+            <Icon Name="volume" Size="16" />
+            <input type="range" min="0" max="100" step="5"
+                   aria-label="Volume da saída"
+                   @bind="_audioOutputVolume"
+                   @bind:after="ApplyNativeOutputVolumeAsync" />
+            <span>@_audioOutputVolume%</span>
+        </div>
+        <p class="quality-note">
+            Conecte o Bluetooth ou o fone com fio antes de abrir esta lista. O volume usa a saída de mídia do Android.
+        </p>
+    }
+    else
+    {
+        <div class="audio-settings-section">
+            <div class="audio-settings-heading">
+                <span class="audio-route-icon"><Icon Name="mic" Size="18" /></span>
+                <div>
+                    <strong>Microfone</strong>
+                    <small>Dispositivo de entrada e ganho</small>
+                </div>
+            </div>
+            @if (_audioInputDevices.Count == 0)
+            {
+                <p class="audio-route-loading">Nenhum microfone encontrado.</p>
+            }
+            else
+            {
+                <select class="text-input audio-select"
+                        aria-label="Dispositivo de entrada"
+                        @onchange="ChangeAudioInputAsync"
+                        disabled="@(_audioRouteBusy)">
+                    @foreach (var device in _audioInputDevices)
+                    {
+                        <option value="@device.DeviceId"
+                                selected="@(string.Equals(device.DeviceId, _audioInputDeviceId, StringComparison.Ordinal))">
+                            @device.Label
+                        </option>
+                    }
+                </select>
+                <div class="audio-volume-row">
+                    <Icon Name="volume-low" Size="16" />
+                    <input type="range" min="0" max="100" step="5"
+                           aria-label="Volume do microfone"
+                           @bind="_audioInputVolume"
+                           @bind:after="ApplyAudioInputVolumeAsync" />
+                    <span>@_audioInputVolume%</span>
+                </div>
+            }
+        </div>
+
+        <div class="audio-settings-section">
+            <div class="audio-settings-heading">
+                <span class="audio-route-icon"><Icon Name="headphones" Size="18" /></span>
+                <div>
+                    <strong>Saída</strong>
+                    <small>Onde você ouve a sala</small>
+                </div>
+            </div>
+            @if (_audioOutputDevices.Count == 0 || !_audioCanSelectOutput)
+            {
+                <p class="audio-route-loading">O navegador está usando a saída padrão do sistema.</p>
+            }
+            else
+            {
+                <select class="text-input audio-select"
+                        aria-label="Dispositivo de saída"
+                        @onchange="ChangeAudioOutputAsync"
+                        disabled="@(_audioRouteBusy)">
+                    @foreach (var device in _audioOutputDevices)
+                    {
+                        <option value="@device.DeviceId"
+                                selected="@(string.Equals(device.DeviceId, _audioOutputDeviceId, StringComparison.Ordinal))">
+                            @device.Label
+                        </option>
+                    }
+                </select>
+            }
+            <div class="audio-volume-row">
+                <Icon Name="volume" Size="16" />
+                <input type="range" min="0" max="100" step="5"
+                       aria-label="Volume da saída"
+                       @bind="_audioOutputVolume"
+                       @bind:after="ApplyAudioOutputVolumeAsync" />
+                <span>@_audioOutputVolume%</span>
+            </div>
+        </div>
+
+        <p class="quality-note">
+            A troca de dispositivo vale para esta chamada. O ganho do microfone depende do navegador e do sistema operacional.
+        </p>
+    }
 </Modal>
 
 <Modal IsOpen="_showNameDialog"
@@ -1329,7 +1423,15 @@ else
     private bool _showQualityDialog;
     private bool _showAudioRouteDialog;
     private bool _audioRouteBusy;
+    private bool _audioNativeMode;
+    private bool _audioCanSelectOutput;
     private IReadOnlyList<NativeAudioDeviceView> _audioRouteDevices = [];
+    private IReadOnlyList<AudioDeviceView> _audioInputDevices = [];
+    private IReadOnlyList<AudioDeviceView> _audioOutputDevices = [];
+    private string _audioInputDeviceId = string.Empty;
+    private string _audioOutputDeviceId = string.Empty;
+    private int _audioInputVolume = 100;
+    private int _audioOutputVolume = 100;
     private bool _showInstallDialog;
     private bool _installContextLoaded;
     private bool _installDesktopApp;
@@ -1722,7 +1824,9 @@ else
                         livekitToken,
                         Code,
                         Guest.Id,
-                        Nav.BaseUri);
+                        Nav.BaseUri,
+                        Guest.Name,
+                        Guest.AvatarTone);
                     _nativeMedia = true;
                     _jsReady = true;
                     await OnLocalMediaStateChanged(true, true, false, false, false);
@@ -3033,6 +3137,12 @@ else
         }
     }
 
+    private Task GoHomeAsync()
+    {
+        Nav.NavigateTo("/");
+        return Task.CompletedTask;
+    }
+
     private async Task ReloadPageAsync()
     {
         try
@@ -3138,16 +3248,175 @@ else
 
     private async Task OpenAudioRouteDialogAsync()
     {
-        if (!_nativeMedia)
+        if (!_nativeMedia && _jsModule is null)
         {
             return;
         }
 
+        _audioNativeMode = _nativeMedia;
         _showAudioRouteDialog = true;
-        await RefreshAudioRouteAsync();
+        if (_nativeMedia)
+        {
+            await RefreshAudioRouteAsync();
+            await RefreshNativeOutputVolumeAsync();
+        }
+        else
+        {
+            await RefreshWebAudioAsync();
+        }
     }
 
     private void CloseAudioRouteDialog() => _showAudioRouteDialog = false;
+
+    private async Task RefreshNativeOutputVolumeAsync()
+    {
+        try
+        {
+            _audioOutputVolume = await JS.InvokeAsync<int>("onda.getNativeOutputVolume");
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            _audioOutputVolume = 100;
+        }
+    }
+
+    private async Task ApplyNativeOutputVolumeAsync()
+    {
+        if (!_audioNativeMode)
+        {
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("onda.setNativeOutputVolume", _audioOutputVolume);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            Toasts.Show("Não foi possível alterar o volume.", ToastKind.Error);
+        }
+    }
+
+    private async Task RefreshWebAudioAsync()
+    {
+        if (_jsModule is null)
+        {
+            return;
+        }
+
+        _audioRouteBusy = true;
+        StateHasChanged();
+        try
+        {
+            var settings = await _jsModule.InvokeAsync<WebAudioSettings>("getAudioSettings");
+            _audioInputDevices = settings?.Inputs ?? [];
+            _audioOutputDevices = settings?.Outputs ?? [];
+            _audioInputDeviceId = settings?.InputDeviceId ?? string.Empty;
+            _audioOutputDeviceId = settings?.OutputDeviceId ?? string.Empty;
+            _audioInputVolume = (int)Math.Round(Math.Clamp(settings?.InputVolume ?? 1, 0, 1) * 100);
+            _audioOutputVolume = (int)Math.Round(Math.Clamp(settings?.OutputVolume ?? 1, 0, 1) * 100);
+            _audioCanSelectOutput = settings?.CanSelectOutput ?? false;
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            _audioInputDevices = [];
+            _audioOutputDevices = [];
+            Toasts.Show("Não foi possível listar os dispositivos de áudio.", ToastKind.Error);
+        }
+        finally
+        {
+            _audioRouteBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ChangeAudioInputAsync(ChangeEventArgs args)
+    {
+        if (_jsModule is null || _audioRouteBusy)
+        {
+            return;
+        }
+
+        var deviceId = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return;
+        }
+
+        _audioRouteBusy = true;
+        try
+        {
+            await _jsModule.InvokeVoidAsync("switchAudioInput", deviceId);
+            await RefreshWebAudioAsync();
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            Toasts.Show("Não foi possível trocar o microfone.", ToastKind.Error);
+        }
+        finally
+        {
+            _audioRouteBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ChangeAudioOutputAsync(ChangeEventArgs args)
+    {
+        if (_jsModule is null || _audioRouteBusy)
+        {
+            return;
+        }
+
+        var deviceId = args.Value?.ToString() ?? string.Empty;
+        _audioRouteBusy = true;
+        try
+        {
+            await _jsModule.InvokeVoidAsync("setAudioOutputDevice", deviceId);
+            await RefreshWebAudioAsync();
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            Toasts.Show("Não foi possível trocar a saída de áudio.", ToastKind.Error);
+        }
+        finally
+        {
+            _audioRouteBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ApplyAudioInputVolumeAsync()
+    {
+        if (_jsModule is null || _audioNativeMode)
+        {
+            return;
+        }
+
+        try
+        {
+            await _jsModule.InvokeVoidAsync("setAudioInputVolume", _audioInputVolume / 100.0);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            // Some browsers do not expose microphone gain.
+        }
+    }
+
+    private async Task ApplyAudioOutputVolumeAsync()
+    {
+        if (_jsModule is null || _audioNativeMode)
+        {
+            return;
+        }
+
+        try
+        {
+            await _jsModule.InvokeVoidAsync("setAudioOutputVolume", _audioOutputVolume / 100.0);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+        }
+    }
 
     private async Task RefreshAudioRouteAsync()
     {
@@ -3413,6 +3682,17 @@ else
     private sealed record NativeAudioDeviceView(string Id, string Label, bool Selected);
 
     private sealed record NativeAudioRouteResponse(List<NativeAudioDeviceView>? Devices);
+
+    private sealed record AudioDeviceView(string DeviceId, string Label);
+
+    private sealed record WebAudioSettings(
+        List<AudioDeviceView>? Inputs,
+        List<AudioDeviceView>? Outputs,
+        string? InputDeviceId,
+        string? OutputDeviceId,
+        double InputVolume,
+        double OutputVolume,
+        bool CanSelectOutput);
 
     private sealed record CameraOptionsView(
         IReadOnlyList<CameraDeviceView> Devices,

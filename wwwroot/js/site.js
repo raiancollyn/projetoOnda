@@ -1480,13 +1480,13 @@
         }
     }
 
-    async function startNativeCall(url, token, roomId, guestId, presenceUrl) {
+    async function startNativeCall(url, token, roomId, guestId, presenceUrl, guestName, avatarTone) {
         const plugin = nativeMediaPlugin();
         if (!plugin) {
             throw new Error("Ponte nativa de mídia indisponível.");
         }
 
-        return plugin.startCall({ url, token, roomId, guestId, presenceUrl });
+        return plugin.startCall({ url, token, roomId, guestId, presenceUrl, guestName, avatarTone });
     }
 
     async function stopNativeCall() {
@@ -1523,6 +1523,24 @@
         }
 
         return plugin.selectAudioDevice({ id });
+    }
+
+    async function getNativeOutputVolume() {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            return 100;
+        }
+
+        return (await plugin.getOutputVolume()).percent;
+    }
+
+    async function setNativeOutputVolume(percent) {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            return;
+        }
+
+        return plugin.setOutputVolume({ percent: Math.round(Number(percent) || 0) });
     }
 
     let presenceHeartbeatTimer = null;
@@ -1598,6 +1616,8 @@
         stopNativeCall,
         setNativeMic,
         getNativeAudioDevices,
-        selectNativeAudioDevice
+        selectNativeAudioDevice,
+        getNativeOutputVolume,
+        setNativeOutputVolume
     });
 })();

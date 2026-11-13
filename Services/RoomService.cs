@@ -797,6 +797,93 @@ public sealed class RoomService
         }
     }
 
+    /// <summary>
+    /// Keeps a participant present while the native call service is publishing audio.
+    /// The lease is longer than the normal stale window so a suspended WebView or a
+    /// temporary network handover does not remove someone whose microphone is still live.
+    /// </summary>
+    public void TouchNativeMedia(string? rawCode, string guestId, string? rawName, int avatarTone)
+    {
+        var code = InputRules.NormalizeRoomCode(rawCode);
+        if (code is null || string.IsNullOrWhiteSpace(guestId))
+        {
+            return;
+        }
+
+        var name = string.IsNullOrWhiteSpace(rawName) ? "Convidado" : rawName.Trim();
+        var now = _time.GetUtcNow();
+        var changed = false;
+        var chatChanged = false;
+        var becameActive = false;
+
+        lock (_sync)
+        {
+            if (!_rooms.TryGetValue(code, out var room))
+            {
+                return;
+            }
+
+            var leaseUntil = now.AddMinutes(10);
+            if (room.Participants.TryGetValue(guestId, out var participant))
+            {
+                participant.LastSeen = now;
+                participant.NativeMediaActiveUntil = leaseUntil;
+                if (!string.Equals(participant.Name, name, StringComparison.Ordinal))
+                {
+                    participant.Name = name;
+                    if (string.Equals(room.OwnerId, guestId, StringComparison.Ordinal))
+                    {
+                        room.OwnerName = name;
+                    }
+                    changed = true;
+                }
+            }
+            else
+            {
+                if (room.Participants.Count >= MaxParticipantsPerRoom)
+                {
+                    return;
+                }
+
+                room.Participants[guestId] = new ParticipantState
+                {
+                    Id = guestId,
+                    Name = name,
+                    AvatarTone = Math.Clamp(avatarTone, 0, GuestSession.AvatarToneCount - 1),
+                    JoinedAt = now,
+                    LastSeen = now,
+                    NativeMediaActiveUntil = leaseUntil
+                };
+
+                if (string.Equals(room.OwnerId, guestId, StringComparison.Ordinal))
+                {
+                    room.OwnerName = name;
+                }
+
+                room.EmptySince = null;
+                room.LastActivityAt = now;
+                becameActive = room.Participants.Count == 1;
+                chatChanged = AddSystemMessageLocked(room, $"{name} entrou na sala.");
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            RaiseRoomChanged(code);
+        }
+
+        if (becameActive)
+        {
+            RaiseLobbyChanged();
+        }
+
+        if (chatChanged)
+        {
+            RaiseChatChanged(code);
+        }
+    }
+
     /// <summary>Removes ghost participants and closes rooms that became empty.</summary>
     public void PurgeStale()
     {
@@ -810,7 +897,9 @@ public sealed class RoomService
             foreach (var room in _rooms.Values.ToArray())
             {
                 var stale = room.Participants.Values
-                    .Where(p => now - p.LastSeen > StaleParticipantAfter)
+                    .Where(p =>
+                        (p.NativeMediaActiveUntil is null || p.NativeMediaActiveUntil <= now) &&
+                        now - p.LastSeen > StaleParticipantAfter)
                     .ToArray();
 
                 if (stale.Length == 0)
@@ -1207,5 +1296,6 @@ public sealed class RoomService
         public bool ScreenOn { get; set; }
         public bool ScreenWithAudio { get; set; }
         public bool Speaking { get; set; }
+        public DateTimeOffset? NativeMediaActiveUntil { get; set; }
     }
 }

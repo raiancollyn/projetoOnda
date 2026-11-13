@@ -57,6 +57,10 @@ let cameraQuality = { ...DEFAULT_CAMERA_QUALITY };
 const remoteVideos = new Map();
 const remoteAudios = new Map();
 const volumePreferences = new Map();
+let inputDeviceId = "";
+let outputDeviceId = "";
+let inputVolume = 1;
+let outputVolume = 1;
 
 let local = createLocalState();
 
@@ -534,7 +538,8 @@ async function acquireMicrophone(enable) {
             const track = await createLocalAudioTrack({
                 echoCancellation: true,
                 noiseSuppression: true,
-                autoGainControl: true
+                autoGainControl: true,
+                ...(inputDeviceId ? { deviceId: { exact: inputDeviceId } } : {})
             });
 
             if (!initialized || !room) {
@@ -544,6 +549,7 @@ async function acquireMicrophone(enable) {
 
             local.micTrack = track;
             local.hasMic = true;
+            applyInputVolumeToTrack(track);
             track.mediaStreamTrack.addEventListener("ended", handleMicrophoneEnded, { once: true });
 
             await room.localParticipant.publishTrack(track, {
@@ -621,6 +627,149 @@ export async function toggleMicrophone() {
     }
 
     await acquireMicrophone(true);
+}
+
+function clampVolume(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.min(1, Math.max(0, number)) : 1;
+}
+
+function applyInputVolumeToTrack(track = local.micTrack) {
+    const mediaTrack = track?.mediaStreamTrack;
+    if (!mediaTrack || typeof mediaTrack.applyConstraints !== "function") {
+        return;
+    }
+
+    mediaTrack.applyConstraints({ volume: inputVolume }).catch(() => {
+        // Some browsers do not expose input gain as a track constraint.
+    });
+}
+
+export function setAudioInputVolume(value) {
+    inputVolume = clampVolume(value);
+    applyInputVolumeToTrack();
+    return inputVolume;
+}
+
+export async function switchAudioInput(deviceId) {
+    if (!initialized || !room || !deviceId) {
+        return false;
+    }
+
+    if (deviceId === inputDeviceId && local.micTrack?.mediaStreamTrack?.readyState === "live") {
+        return true;
+    }
+
+    const wasOn = local.micOn;
+    const oldTrack = local.micTrack;
+    inputDeviceId = deviceId;
+
+    try {
+        const nextTrack = await createLocalAudioTrack({
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            deviceId: { exact: deviceId }
+        });
+
+        if (!initialized || !room) {
+            stopLocalTrack(nextTrack);
+            return false;
+        }
+
+        nextTrack.mediaStreamTrack.addEventListener("ended", handleMicrophoneEnded, { once: true });
+        await room.localParticipant.publishTrack(nextTrack, {
+            source: Track.Source.Microphone,
+            name: "microphone",
+            dtx: true,
+            red: true
+        });
+
+        local.micTrack = nextTrack;
+        local.hasMic = true;
+        applyInputVolumeToTrack(nextTrack);
+        await setMicrophoneEnabled(wasOn, false);
+
+        if (oldTrack) {
+            oldTrack.mediaStreamTrack.removeEventListener("ended", handleMicrophoneEnded);
+            await unpublishLocalTrack(oldTrack);
+            stopLocalTrack(oldTrack);
+        }
+
+        notifyMediaState();
+        return true;
+    } catch (error) {
+        inputDeviceId = "";
+        notifyError("microphone", "Não foi possível trocar o microfone.");
+        return false;
+    }
+}
+
+export function setAudioOutputVolume(value) {
+    outputVolume = clampVolume(value);
+    for (const item of remoteAudios.values()) {
+        applyOutputSettingsToElement(item.element);
+    }
+    return outputVolume;
+}
+
+export async function setAudioOutputDevice(deviceId) {
+    outputDeviceId = deviceId || "";
+    const results = [];
+    for (const item of remoteAudios.values()) {
+        results.push(applyOutputSettingsToElement(item.element));
+    }
+    await Promise.all(results);
+    return true;
+}
+
+function applyOutputSettingsToElement(element) {
+    if (!element) {
+        return Promise.resolve();
+    }
+
+    element.volume = outputVolume;
+    if (outputDeviceId && typeof element.setSinkId === "function") {
+        return element.setSinkId(outputDeviceId).catch(() => {
+            // The output device may have disappeared or require a new gesture.
+        });
+    }
+
+    return Promise.resolve();
+}
+
+export async function getAudioSettings() {
+    let devices = [];
+    try {
+        devices = await navigator.mediaDevices?.enumerateDevices?.() || [];
+    } catch {
+        devices = [];
+    }
+
+    const inputs = devices
+        .filter((device) => device.kind === "audioinput")
+        .map((device, index) => ({
+            deviceId: device.deviceId,
+            label: device.label || `Microfone ${index + 1}`
+        }));
+
+    const outputs = devices
+        .filter((device) => device.kind === "audiooutput")
+        .map((device, index) => ({
+            deviceId: device.deviceId,
+            label: device.label || `Saída ${index + 1}`
+        }));
+
+    return {
+        inputs,
+        outputs,
+        inputDeviceId,
+        outputDeviceId,
+        inputVolume,
+        outputVolume,
+        canSelectOutput: typeof HTMLMediaElement !== "undefined" &&
+            typeof HTMLMediaElement.prototype.setSinkId === "function"
+    };
 }
 
 function handleMicrophoneEnded() {
@@ -1288,6 +1437,7 @@ function attachRemoteAudio(identity, channel, track) {
     try {
         track.attach(element);
         track.setVolume(getVolume(identity, channel));
+        applyOutputSettingsToElement(element);
     } catch (error) {
         console.warn("Onda: could not attach remote audio", error);
     }

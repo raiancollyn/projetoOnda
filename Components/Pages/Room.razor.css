@@ -3761,3 +3761,67 @@ html[data-theme="dark"] .audio-route-icon {
 html[data-theme="dark"] .audio-route-check {
     color: var(--lime);
 }
+
+.audio-route-list {
+    margin-bottom: 16px;
+}
+
+.audio-route-list + .quality-note {
+    margin-top: 0;
+}
+
+.audio-settings-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 18px;
+}
+
+.audio-settings-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.audio-settings-heading > div {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.audio-settings-heading strong {
+    font-size: 0.9rem;
+}
+
+.audio-settings-heading small {
+    color: var(--ink-muted);
+    font-size: 0.7rem;
+}
+
+.audio-settings-section .audio-route-icon {
+    width: 34px;
+    height: 34px;
+}
+
+.audio-select {
+    width: 100%;
+}
+
+.audio-volume-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) 42px;
+    align-items: center;
+    gap: 10px;
+    color: var(--ink-soft);
+}
+
+.audio-volume-row input[type="range"] {
+    width: 100%;
+    accent-color: var(--lime);
+}
+
+.audio-volume-row span {
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
