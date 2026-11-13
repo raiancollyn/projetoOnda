@@ -1507,6 +1507,26 @@
         return plugin.setMic({ enabled: Boolean(enabled) });
     }
 
+    async function setNativeCamera(enabled) {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            throw new Error("Ponte nativa de mídia indisponível.");
+        }
+
+        const result = await plugin.setCamera({ enabled: Boolean(enabled) });
+        return Boolean(result?.enabled);
+    }
+
+    async function getNativeCamera() {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            return false;
+        }
+
+        const result = await plugin.getCamera();
+        return Boolean(result?.enabled);
+    }
+
     let nativeMicDotNetRef = null;
     let nativeMicSyncInstalled = false;
 
@@ -1594,8 +1614,12 @@
         }
 
         try {
-            const result = await plugin.getMic();
-            await nativeMicDotNetRef.invokeMethodAsync("OnNativeMicChanged", Boolean(result?.enabled));
+            const [mic, camera] = await Promise.all([
+                plugin.getMic(),
+                plugin.getCamera()
+            ]);
+            await nativeMicDotNetRef.invokeMethodAsync("OnNativeMicChanged", Boolean(mic?.enabled));
+            await nativeMicDotNetRef.invokeMethodAsync("OnNativeCameraChanged", Boolean(camera?.enabled));
         } catch {
             // The WebView may be gone or the call may have ended.
         }
@@ -1734,6 +1758,8 @@
         startNativeCall,
         stopNativeCall,
         setNativeMic,
+        setNativeCamera,
+        getNativeCamera,
         registerNativeMicListener,
         getNativeMic,
         registerExitGuard,

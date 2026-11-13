@@ -489,7 +489,7 @@ else
                         <button type="button"
                                 class="dock-control @(_localCameraOn ? "is-on" : "is-off")"
                                 @onclick="ToggleCameraAsync"
-                                disabled="@(!_jsReady || _nativeMedia || _actionPending is not null)"
+                                disabled="@(!_jsReady || _actionPending is not null)"
                                 aria-pressed="@(_localCameraOn ? "true" : "false")"
                                 aria-label="@(_localCameraOn ? "Desligar câmera" : "Ligar câmera")"
                                 title="@(_localCameraOn ? "Desligar câmera" : "Ligar câmera")">
@@ -2345,7 +2345,18 @@ else
             return Task.CompletedTask;
         }
 
-        return OnLocalMediaStateChanged(enabled, true, false, false, false);
+        return OnLocalMediaStateChanged(enabled, true, _localCameraOn, false, false);
+    }
+
+    [JSInvokable]
+    public Task OnNativeCameraChanged(bool enabled)
+    {
+        if (_disposed || !_nativeMedia)
+        {
+            return Task.CompletedTask;
+        }
+
+        return OnLocalMediaStateChanged(_localMicOn, true, enabled, false, false);
     }
 
     [JSInvokable]
@@ -2502,7 +2513,33 @@ else
 
     private async Task ToggleCameraAsync()
     {
-        if (_jsModule is null || _actionPending is not null)
+        if (_actionPending is not null)
+        {
+            return;
+        }
+
+        if (_nativeMedia)
+        {
+            _actionPending = "camera";
+            var nextCamera = !_localCameraOn;
+            try
+            {
+                var enabled = await JS.InvokeAsync<bool>("onda.setNativeCamera", nextCamera);
+                await OnLocalMediaStateChanged(_localMicOn, true, enabled, false, false);
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                Toasts.Show("Não foi possível alterar a câmera.", ToastKind.Error);
+            }
+            finally
+            {
+                _actionPending = null;
+                StateHasChanged();
+            }
+            return;
+        }
+
+        if (_jsModule is null)
         {
             return;
         }
