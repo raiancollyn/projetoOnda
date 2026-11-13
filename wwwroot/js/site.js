@@ -1507,6 +1507,48 @@
         return plugin.setMic({ enabled: Boolean(enabled) });
     }
 
+    let nativeMicDotNetRef = null;
+    let nativeMicSyncInstalled = false;
+
+    async function syncNativeMicState() {
+        const plugin = nativeMediaPlugin();
+        if (!nativeMicDotNetRef || !plugin) {
+            return;
+        }
+
+        try {
+            const result = await plugin.getMic();
+            await nativeMicDotNetRef.invokeMethodAsync("OnNativeMicChanged", Boolean(result?.enabled));
+        } catch {
+            // The WebView may be gone or the call may have ended.
+        }
+    }
+
+    function registerNativeMicListener(dotNetRef) {
+        nativeMicDotNetRef = dotNetRef;
+        if (!nativeMicSyncInstalled) {
+            nativeMicSyncInstalled = true;
+            document.addEventListener("visibilitychange", () => {
+                if (!document.hidden) {
+                    void syncNativeMicState();
+                }
+            });
+            window.addEventListener("focus", () => void syncNativeMicState());
+        }
+
+        window.setTimeout(() => void syncNativeMicState(), 300);
+    }
+
+    async function getNativeMic() {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            return false;
+        }
+
+        const result = await plugin.getMic();
+        return Boolean(result?.enabled);
+    }
+
     async function getNativeAudioDevices() {
         const plugin = nativeMediaPlugin();
         if (!plugin) {
@@ -1615,6 +1657,8 @@
         startNativeCall,
         stopNativeCall,
         setNativeMic,
+        registerNativeMicListener,
+        getNativeMic,
         getNativeAudioDevices,
         selectNativeAudioDevice,
         getNativeOutputVolume,

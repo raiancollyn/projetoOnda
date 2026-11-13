@@ -1819,6 +1819,8 @@ else
             {
                 try
                 {
+                    _dotNetRef ??= DotNetObjectReference.Create(this);
+                    await JS.InvokeVoidAsync("onda.registerNativeMicListener", _dotNetRef);
                     await JS.InvokeVoidAsync(
                         "onda.startNativeCall",
                         livekitUrl,
@@ -2298,6 +2300,17 @@ else
         }
 
         return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnNativeMicChanged(bool enabled)
+    {
+        if (_disposed || !_nativeMedia)
+        {
+            return Task.CompletedTask;
+        }
+
+        return OnLocalMediaStateChanged(enabled, true, false, false, false);
     }
 
     [JSInvokable]
