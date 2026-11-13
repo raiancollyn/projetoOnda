@@ -3825,3 +3825,10 @@ html[data-theme="dark"] .audio-route-check {
     font-variant-numeric: tabular-nums;
     text-align: right;
 }
+
+.room-exit-copy {
+    margin: 0 0 1.1rem;
+    color: var(--ink-soft);
+    font-size: 0.84rem;
+    line-height: 1.55;
+}

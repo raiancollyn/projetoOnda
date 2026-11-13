@@ -189,7 +189,7 @@ else
     <div class="room-app">
         <header class="room-header @(ShowRoomInstallButton ? "has-install" : null)">
             <div class="room-header-left">
-                <Brand Light="true" />
+                <Brand Light="true" OnNavigate="RequestRoomExitAsync" />
                 <span class="room-header-divider" aria-hidden="true"></span>
                 <div class="room-title-block">
                     <div class="room-title-line">
@@ -238,7 +238,7 @@ else
                     <Icon Name="link" Size="16" />
                     <span class="header-button-label">Copiar link</span>
                 </button>
-                <button type="button" class="room-leave-button" @onclick="LeaveRoomAsync" disabled="@_leaveBusy" aria-label="Sair da sala" title="Sair da sala">
+                <button type="button" class="room-leave-button" @onclick="RequestRoomExitAsync" disabled="@_leaveBusy" aria-label="Sair da sala" title="Sair da sala">
                     <Icon Name="phone-off" Size="16" />
                     <span class="header-button-label">Sair</span>
                 </button>
@@ -565,7 +565,7 @@ else
                         </button>
                     </div>
 
-                    <button type="button" class="dock-leave" @onclick="LeaveRoomAsync" disabled="@_leaveBusy" title="Sair da sala" aria-label="Sair da sala">
+                    <button type="button" class="dock-leave" @onclick="RequestRoomExitAsync" disabled="@_leaveBusy" title="Sair da sala" aria-label="Sair da sala">
                         <Icon Name="phone-off" Size="20" />
                         <span>Sair</span>
                     </button>
@@ -828,6 +828,23 @@ else
         }
     </div>
 }
+
+<Modal IsOpen="_showExitDialog"
+       Title="Sair da sala?"
+       Eyebrow="ANTES DE SAIR"
+       OnClose="CancelRoomExit">
+    <p class="room-exit-copy">
+        Sua voz e sua presença serão removidas da conversa. Tem certeza de que quer sair?
+    </p>
+    <div class="modal-actions modal-actions-end">
+        <button type="button" class="button button-ghost" @onclick="CancelRoomExit">
+            Continuar na sala
+        </button>
+        <button type="button" class="button button-danger" @onclick="ConfirmRoomExitAsync" disabled="@_leaveBusy">
+            <Icon Name="phone-off" Size="16" /> Sair da sala
+        </button>
+    </div>
+</Modal>
 
 <Modal IsOpen="_showAudioRouteDialog"
        Title="Áudio da chamada"
@@ -1423,6 +1440,8 @@ else
 
     private bool _showQualityDialog;
     private bool _showAudioRouteDialog;
+    private bool _showExitDialog;
+    private bool _exitGuardStarted;
     private bool _audioRouteBusy;
     private bool _audioNativeMode;
     private bool _audioCanSelectOutput;
@@ -1674,6 +1693,21 @@ else
             catch (Exception ex) when (ex is JSException or JSDisconnectedException)
             {
                 // Native mode still sends its own heartbeat.
+            }
+        }
+
+        if (_joined && !_exitGuardStarted)
+        {
+            _exitGuardStarted = true;
+            try
+            {
+                _dotNetRef ??= DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("onda.registerExitGuard", _dotNetRef);
+                await JS.InvokeVoidAsync("onda.setRoomExitGuard", true);
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                _exitGuardStarted = false;
             }
         }
 
@@ -3071,6 +3105,65 @@ else
         }
     }
 
+    [JSInvokable]
+    public Task OnExitRequested()
+    {
+        return InvokeAsync(() =>
+        {
+            if (_disposed || !_joined)
+            {
+                return;
+            }
+
+            _showExitDialog = true;
+            StateHasChanged();
+        });
+    }
+
+    private Task RequestRoomExitAsync()
+    {
+        if (_leaveBusy)
+        {
+            return Task.CompletedTask;
+        }
+
+        _showExitDialog = true;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private void CancelRoomExit() => _showExitDialog = false;
+
+    private async Task ConfirmRoomExitAsync()
+    {
+        if (_leaveBusy)
+        {
+            return;
+        }
+
+        _showExitDialog = false;
+        await DisableRoomExitGuardAsync();
+        await LeaveRoomAsync();
+    }
+
+    private async Task DisableRoomExitGuardAsync()
+    {
+        if (!_exitGuardStarted)
+        {
+            return;
+        }
+
+        _exitGuardStarted = false;
+        try
+        {
+            await JS.InvokeVoidAsync("onda.setRoomExitGuard", false);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException)
+        {
+            // The circuit or browser is already going away.
+        }
+    }
+
     private async Task LeaveRoomAsync()
     {
         if (_leaveBusy)
@@ -3081,6 +3174,7 @@ else
         _leaveBusy = true;
         try
         {
+            await DisableRoomExitGuardAsync();
             await ReleaseWakeLockAsync();
             await StopPresenceHeartbeatAsync();
             await StopNativeCallAsync();
@@ -3663,6 +3757,7 @@ else
             _joined = false;
         }
 
+        await DisableRoomExitGuardAsync();
         await ReleaseWakeLockAsync();
         await StopPresenceHeartbeatAsync();
         await StopNativeCallAsync();

@@ -1,6 +1,9 @@
 @using Onda.Components.Shared
 
-<a href="/" class="brand @(Light ? "brand-light" : null)" aria-label="Onda — página inicial">
+<a href="/" class="brand @(Light ? "brand-light" : null)"
+   aria-label="Onda — página inicial"
+   @onclick="HandleNavigate"
+   @onclick:preventDefault="@OnNavigate.HasDelegate">
     <span class="brand-mark-shell">
         <svg class="brand-mark" viewBox="0 0 36 36" role="presentation" focusable="false">
             <rect x="0" y="0" width="36" height="36" rx="11" fill="currentColor" />
@@ -16,4 +19,10 @@
 @code {
     [Parameter]
     public bool Light { get; set; }
+
+    [Parameter]
+    public EventCallback OnNavigate { get; set; }
+
+    private Task HandleNavigate() =>
+        OnNavigate.HasDelegate ? OnNavigate.InvokeAsync() : Task.CompletedTask;
 }

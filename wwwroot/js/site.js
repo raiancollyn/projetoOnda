@@ -1510,6 +1510,83 @@
     let nativeMicDotNetRef = null;
     let nativeMicSyncInstalled = false;
 
+    let exitGuardRef = null;
+    let exitGuardActive = false;
+    let exitGuardUrl = "";
+    let exitGuardPrompting = false;
+
+    function registerExitGuard(dotNetRef) {
+        exitGuardRef = dotNetRef;
+    }
+
+    function handleBeforeUnload(event) {
+        if (!exitGuardActive) {
+            return;
+        }
+
+        event.preventDefault();
+        event.returnValue = "";
+        return "";
+    }
+
+    function handleExitPopState() {
+        if (!exitGuardActive) {
+            return;
+        }
+
+        try {
+            history.pushState({ ondaRoom: true }, "", exitGuardUrl || location.href);
+        } catch {
+            // History may be unavailable in an embedded webview.
+        }
+
+        if (exitGuardPrompting || !exitGuardRef) {
+            return;
+        }
+
+        exitGuardPrompting = true;
+        const finish = () => {
+            exitGuardPrompting = false;
+        };
+
+        try {
+            Promise.resolve(exitGuardRef.invokeMethodAsync("OnExitRequested"))
+                .then(finish, finish);
+        } catch {
+            finish();
+        }
+    }
+
+    function setRoomExitGuard(enabled) {
+        if (enabled) {
+            if (exitGuardActive) {
+                return;
+            }
+
+            exitGuardActive = true;
+            exitGuardPrompting = false;
+            exitGuardUrl = location.href;
+            try {
+                history.pushState({ ondaRoom: true }, "", exitGuardUrl);
+            } catch {
+                // The guard still works through beforeunload.
+            }
+            window.addEventListener("beforeunload", handleBeforeUnload);
+            window.addEventListener("popstate", handleExitPopState);
+            return;
+        }
+
+        exitGuardActive = false;
+        exitGuardPrompting = false;
+        window.removeEventListener("beforeunload", handleBeforeUnload);
+        window.removeEventListener("popstate", handleExitPopState);
+        try {
+            history.replaceState(null, "", location.href);
+        } catch {
+            // Ignore history failures during teardown.
+        }
+    }
+
     async function syncNativeMicState() {
         const plugin = nativeMediaPlugin();
         if (!nativeMicDotNetRef || !plugin) {
@@ -1659,6 +1736,8 @@
         setNativeMic,
         registerNativeMicListener,
         getNativeMic,
+        registerExitGuard,
+        setRoomExitGuard,
         getNativeAudioDevices,
         selectNativeAudioDevice,
         getNativeOutputVolume,
