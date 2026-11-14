@@ -1967,7 +1967,19 @@ else
                         }
                     }
 
-                    await OnLocalMediaStateChanged(true, true, false, false, false);
+                    var nativeMicOn = true;
+                    var nativeCameraOn = false;
+                    try
+                    {
+                        nativeMicOn = await JS.InvokeAsync<bool>("onda.getNativeMic");
+                        nativeCameraOn = await JS.InvokeAsync<bool>("onda.getNativeCamera");
+                    }
+                    catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+                    {
+                        // Keep conservative defaults if the native bridge is still starting.
+                    }
+
+                    await OnLocalMediaStateChanged(nativeMicOn, true, nativeCameraOn, false, false);
                     return;
                 }
                 catch (Exception ex) when (ex is JSException or JSDisconnectedException)
