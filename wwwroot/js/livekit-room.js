@@ -68,10 +68,55 @@ let cameraQuality = { ...DEFAULT_CAMERA_QUALITY };
 const remoteVideos = new Map();
 const remoteAudios = new Map();
 const volumePreferences = new Map();
-let inputDeviceId = "";
-let outputDeviceId = "";
-let inputVolume = 1;
-let outputVolume = 1;
+const AUDIO_PREFS_KEY = "onda.audio.web";
+const storedAudioPreferences = readAudioPreferences();
+let inputDeviceId = storedAudioPreferences.inputDeviceId;
+let outputDeviceId = storedAudioPreferences.outputDeviceId;
+let inputVolume = storedAudioPreferences.inputVolume;
+let outputVolume = storedAudioPreferences.outputVolume;
+
+function readAudioPreferences() {
+    const fallback = {
+        inputDeviceId: "",
+        outputDeviceId: "",
+        inputVolume: 1,
+        outputVolume: 1
+    };
+
+    try {
+        const parsed = JSON.parse(localStorage.getItem(AUDIO_PREFS_KEY) || "null");
+        if (!parsed || typeof parsed !== "object") {
+            return fallback;
+        }
+
+        const clamp = (value) => {
+            const number = Number(value);
+            return Number.isFinite(number) ? Math.min(1, Math.max(0, number)) : 1;
+        };
+
+        return {
+            inputDeviceId: typeof parsed.inputDeviceId === "string" ? parsed.inputDeviceId : "",
+            outputDeviceId: typeof parsed.outputDeviceId === "string" ? parsed.outputDeviceId : "",
+            inputVolume: clamp(parsed.inputVolume),
+            outputVolume: clamp(parsed.outputVolume)
+        };
+    } catch {
+        return fallback;
+    }
+}
+
+function persistAudioPreferences() {
+    try {
+        localStorage.setItem(AUDIO_PREFS_KEY, JSON.stringify({
+            inputDeviceId,
+            outputDeviceId,
+            inputVolume,
+            outputVolume
+        }));
+    } catch {
+        // Private mode may block persistence.
+    }
+}
 
 let local = createLocalState();
 
@@ -674,8 +719,32 @@ async function playAllRemoteAudio() {
 /* Microphone                                                         */
 /* ------------------------------------------------------------------ */
 
-async function acquireMicrophone(enable) {
-    if (!initialized || !room) {
+async function createMicrophoneTrackWithFallback() {
+    const baseOptions = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+    };
+
+    try {
+        return await createLocalAudioTrack({
+            ...baseOptions,
+            ...(inputDeviceId ? { deviceId: { exact: inputDeviceId } } : {})
+        });
+    } catch (error) {
+        if (!inputDeviceId) {
+            throw error;
+        }
+
+        // The saved device may have been disconnected. Fall back to the
+        // system default and remember that choice.
+        inputDeviceId = "";
+        persistAudioPreferences();
+        return createLocalAudioTrack(baseOptions);
+    }
+}
+
+async function acquireMicrophone(enable) {    if (!initialized || !room) {
         return false;
     }
 
@@ -695,12 +764,7 @@ async function acquireMicrophone(enable) {
 
     micAcquirePromise = (async () => {
         try {
-            const track = await createLocalAudioTrack({
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-                ...(inputDeviceId ? { deviceId: { exact: inputDeviceId } } : {})
-            });
+            const track = await createMicrophoneTrackWithFallback();
 
             if (!initialized || !room) {
                 track.stop();
@@ -808,6 +872,7 @@ function applyInputVolumeToTrack(track = local.micTrack) {
 export function setAudioInputVolume(value) {
     inputVolume = clampVolume(value);
     applyInputVolumeToTrack();
+    persistAudioPreferences();
     return inputVolume;
 }
 
@@ -856,10 +921,12 @@ export async function switchAudioInput(deviceId) {
             stopLocalTrack(oldTrack);
         }
 
+        persistAudioPreferences();
         notifyMediaState();
         return true;
     } catch (error) {
         inputDeviceId = "";
+        persistAudioPreferences();
         notifyError("microphone", "Não foi possível trocar o microfone.");
         return false;
     }
@@ -870,6 +937,7 @@ export function setAudioOutputVolume(value) {
     for (const item of remoteAudios.values()) {
         applyOutputSettingsToElement(item.element);
     }
+    persistAudioPreferences();
     return outputVolume;
 }
 
@@ -880,6 +948,7 @@ export async function setAudioOutputDevice(deviceId) {
         results.push(applyOutputSettingsToElement(item.element));
     }
     await Promise.all(results);
+    persistAudioPreferences();
     return true;
 }
 
@@ -891,7 +960,11 @@ function applyOutputSettingsToElement(element) {
     element.volume = outputVolume;
     if (outputDeviceId && typeof element.setSinkId === "function") {
         return element.setSinkId(outputDeviceId).catch(() => {
-            // The output device may have disappeared or require a new gesture.
+            // The saved device may have been disconnected. Fall back to the
+            // system default and stop persisting the stale id.
+            outputDeviceId = "";
+            persistAudioPreferences();
+            return element.setSinkId("").catch(() => { });
         });
     }
 
@@ -919,6 +992,21 @@ export async function getAudioSettings() {
             deviceId: device.deviceId,
             label: device.label || `Saída ${index + 1}`
         }));
+
+    let preferencesChanged = false;
+    if (inputDeviceId && inputs.length > 0 &&
+        !inputs.some((device) => device.deviceId === inputDeviceId)) {
+        inputDeviceId = "";
+        preferencesChanged = true;
+    }
+    if (outputDeviceId && outputs.length > 0 &&
+        !outputs.some((device) => device.deviceId === outputDeviceId)) {
+        outputDeviceId = "";
+        preferencesChanged = true;
+    }
+    if (preferencesChanged) {
+        persistAudioPreferences();
+    }
 
     return {
         inputs,

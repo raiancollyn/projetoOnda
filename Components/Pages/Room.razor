@@ -1924,7 +1924,8 @@ else
                         Guest.Id,
                         Nav.BaseUri,
                         Guest.Name,
-                        Guest.AvatarTone);
+                        Guest.AvatarTone,
+                        ToJsCameraQuality(_cameraQuality));
                     _nativeMedia = true;
                     _jsReady = true;
 
@@ -3854,6 +3855,23 @@ else
                 cameraApplied = await _jsModule.InvokeAsync<bool>(
                     "setCameraQuality",
                     ToJsCameraQuality(_cameraQuality));
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                failed = true;
+            }
+        }
+
+        if (_nativeMedia)
+        {
+            try
+            {
+                cameraApplied = await JS.InvokeAsync<bool>(
+                    "onda.setNativeCameraQuality",
+                    _cameraQuality.Width,
+                    _cameraQuality.Height,
+                    _cameraQuality.FrameRate,
+                    _cameraQuality.BitrateKbps);
             }
             catch (Exception ex) when (ex is JSException or JSDisconnectedException)
             {

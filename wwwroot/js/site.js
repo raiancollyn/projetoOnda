@@ -1480,13 +1480,28 @@
         }
     }
 
-    async function startNativeCall(url, token, roomId, guestId, presenceUrl, guestName, avatarTone) {
+    async function startNativeCall(url, token, roomId, guestId, presenceUrl, guestName, avatarTone, cameraQuality) {
         const plugin = nativeMediaPlugin();
         if (!plugin) {
             throw new Error("Ponte nativa de mídia indisponível.");
         }
 
-        return plugin.startCall({ url, token, roomId, guestId, presenceUrl, guestName, avatarTone });
+        const result = await plugin.startCall({
+            url,
+            token,
+            roomId,
+            guestId,
+            presenceUrl,
+            guestName,
+            avatarTone,
+            cameraQuality
+        });
+
+        window.setTimeout(() => {
+            void applyNativeAudioPreferences(plugin);
+        }, 1500);
+
+        return result;
     }
 
     async function stopNativeCall() {
@@ -1554,6 +1569,21 @@
 
         const result = await plugin.setCameraTorch({ enabled: Boolean(enabled) });
         return Boolean(result?.changed);
+    }
+
+    async function setNativeCameraQuality(width, height, frameRate, bitrateKbps) {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            return false;
+        }
+
+        const result = await plugin.setCameraQuality({
+            width: Math.round(Number(width) || 1280),
+            height: Math.round(Number(height) || 720),
+            frameRate: Math.round(Number(frameRate) || 30),
+            bitrateKbps: Math.round(Number(bitrateKbps) || 1500)
+        });
+        return Boolean(result?.applied);
     }
 
     let nativeMicDotNetRef = null;
@@ -1681,6 +1711,82 @@
         return Boolean(result?.enabled);
     }
 
+    const nativeAudioPrefsKey = "onda.audio.native";
+
+    function readNativeAudioPreferences() {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(nativeAudioPrefsKey) || "null");
+            return {
+                route: typeof parsed?.route === "string" ? parsed.route : "",
+                volume: Number.isFinite(Number(parsed?.volume))
+                    ? Math.min(100, Math.max(0, Math.round(Number(parsed.volume))))
+                    : 100
+            };
+        } catch {
+            return { route: "", volume: 100 };
+        }
+    }
+
+    function saveNativeAudioPreferences(next) {
+        try {
+            const previous = readNativeAudioPreferences();
+            localStorage.setItem(nativeAudioPrefsKey, JSON.stringify({
+                route: next.route ?? previous.route,
+                volume: next.volume ?? previous.volume
+            }));
+        } catch {
+            // Storage may be unavailable in private mode.
+        }
+    }
+
+    async function selectNativeAudioRoute(plugin, id) {
+        if (!plugin || !id) {
+            return false;
+        }
+
+        try {
+            const result = await plugin.selectAudioDevice({ id });
+            return Boolean(result?.selected);
+        } catch {
+            return false;
+        }
+    }
+
+    async function applyNativeAudioPreferences(plugin) {
+        if (!plugin) {
+            return;
+        }
+
+        const preferences = readNativeAudioPreferences();
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+            try {
+                const response = await plugin.getAudioDevices();
+                const devices = Array.isArray(response?.devices) ? response.devices : [];
+                let route = preferences.route;
+
+                if (route && !devices.some((device) => device.id === route)) {
+                    // Keep the saved route for when the headset returns, but
+                    // use the speaker now so the user is not left without audio.
+                    route = "Speakerphone";
+                }
+
+                if (route) {
+                    const selected = await selectNativeAudioRoute(plugin, route);
+                    if (!selected && route !== "Speakerphone") {
+                        await selectNativeAudioRoute(plugin, "Speakerphone");
+                    }
+                }
+
+                await plugin.setOutputVolume({ percent: preferences.volume });
+                return;
+            } catch {
+                if (attempt < 5) {
+                    await new Promise((resolve) => window.setTimeout(resolve, 1000));
+                }
+            }
+        }
+    }
+
     async function getNativeAudioDevices() {
         const plugin = nativeMediaPlugin();
         if (!plugin) {
@@ -1696,7 +1802,11 @@
             throw new Error("Ponte nativa de mídia indisponível.");
         }
 
-        return plugin.selectAudioDevice({ id });
+        const result = await plugin.selectAudioDevice({ id });
+        if (result?.selected) {
+            saveNativeAudioPreferences({ route: id });
+        }
+        return result;
     }
 
     async function getNativeOutputVolume() {
@@ -1714,7 +1824,10 @@
             return;
         }
 
-        return plugin.setOutputVolume({ percent: Math.round(Number(percent) || 0) });
+        const value = Math.min(100, Math.max(0, Math.round(Number(percent) || 0)));
+        const result = await plugin.setOutputVolume({ percent: value });
+        saveNativeAudioPreferences({ volume: value });
+        return result;
     }
 
     let presenceHeartbeatTimer = null;
@@ -1976,6 +2089,7 @@
         getNativeCameraOptions,
         switchNativeCamera,
         setNativeCameraTorch,
+        setNativeCameraQuality,
         registerNativeMicListener,
         getNativeMic,
         registerExitGuard,
