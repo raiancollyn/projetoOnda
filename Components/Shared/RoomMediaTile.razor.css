@@ -398,3 +398,12 @@
         display: none;
     }
 }
+
+.media-tile video {
+    opacity: 0;
+    transition: opacity 180ms ease;
+}
+
+.media-tile video.has-stream {
+    opacity: 1;
+}

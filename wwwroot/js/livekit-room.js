@@ -42,6 +42,8 @@ let dotnetRef = null;
 let room = null;
 let initialized = false;
 let viewerMode = false;
+let viewerUrl = "";
+let viewerToken = "";
 let roomId = "";
 let selfId = "";
 let reconnectInProgress = false;
@@ -49,6 +51,7 @@ let heartbeatTimer = null;
 let visibilityHandler = null;
 let pageHideHandler = null;
 let gestureHandler = null;
+let viewerVisibilityHandler = null;
 let micAcquirePromise = null;
 let cameraBusy = false;
 let screenBusy = false;
@@ -170,6 +173,8 @@ export async function initialize(ref, roomCode, guestId, config = {}) {
     roomId = roomCode || "";
     selfId = guestId || "";
     viewerMode = Boolean(config?.viewerMode);
+    viewerUrl = config?.livekitUrl || "";
+    viewerToken = config?.livekitToken || "";
     quality = normalizeScreenQuality(config?.quality);
     cameraQuality = normalizeCameraQuality(config?.cameraQuality);
     local = createLocalState();
@@ -199,6 +204,7 @@ export async function initialize(ref, roomCode, guestId, config = {}) {
 
     if (viewerMode) {
         stopHeartbeat();
+        installViewerVisibility();
     }
 
     room = new Room({
@@ -420,6 +426,57 @@ function removePageLifecycle() {
     if (pageHideHandler) {
         window.removeEventListener("pagehide", pageHideHandler);
         pageHideHandler = null;
+    }
+}
+
+function installViewerVisibility() {
+    removeViewerVisibility();
+    viewerVisibilityHandler = () => {
+        if (!initialized) {
+            return;
+        }
+
+        const videos = Array.from(document.querySelectorAll("video[data-peer-id]"));
+        if (document.visibilityState !== "visible") {
+            for (const video of videos) {
+                video.pause();
+                video.classList.remove("has-stream");
+            }
+            return;
+        }
+
+        syncMediaElements();
+        if (room && room.state === "disconnected" && viewerUrl && viewerToken) {
+            room.connect(viewerUrl, viewerToken, { autoSubscribe: true })
+                .then(() => {
+                    syncMediaElements();
+                    for (const video of videos) {
+                        video.play()
+                            .then(() => video.classList.add("has-stream"))
+                            .catch(() => { });
+                    }
+                })
+                .catch(() => {
+                    // The next resume will retry.
+                });
+            return;
+        }
+
+        for (const video of videos) {
+            video.play()
+                .then(() => video.classList.add("has-stream"))
+                .catch(() => {
+                    // The track may be waiting for a new subscription.
+                });
+        }
+    };
+    document.addEventListener("visibilitychange", viewerVisibilityHandler);
+}
+
+function removeViewerVisibility() {
+    if (viewerVisibilityHandler) {
+        document.removeEventListener("visibilitychange", viewerVisibilityHandler);
+        viewerVisibilityHandler = null;
     }
 }
 
@@ -1542,19 +1599,25 @@ export function syncMediaElements() {
                 // Already detached.
             }
             video.__ondaLiveKitTrack = null;
+            video.classList.remove("has-stream");
         }
 
         if (targetTrack) {
             try {
+                const markReady = () => video.classList.add("has-stream");
+                video.addEventListener("loadeddata", markReady, { once: true });
+                video.addEventListener("playing", markReady, { once: true });
                 targetTrack.attach(video);
                 video.muted = true;
                 video.__ondaLiveKitTrack = targetTrack;
-                video.play().catch(() => {
+                video.play().then(markReady).catch(() => {
                     // Video elements are muted; playback is normally allowed.
                 });
             } catch (error) {
                 console.warn("Onda: could not attach video track", error);
             }
+        } else {
+            video.classList.remove("has-stream");
         }
     }
 }

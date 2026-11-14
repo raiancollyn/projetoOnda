@@ -12,6 +12,14 @@ public static class PresenceEndpoints
         string? Name,
         int AvatarTone);
 
+    public sealed record MediaStatePing(
+        string RoomId,
+        string GuestId,
+        bool MicOn,
+        bool CameraOn,
+        bool ScreenOn,
+        bool ScreenWithAudio);
+
     public static IEndpointRouteBuilder MapPresenceEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapPost("/api/presence/heartbeat", (PresencePing? ping, RoomService rooms) =>
@@ -37,6 +45,25 @@ public static class PresenceEndpoints
             }
 
             rooms.TouchNativeMedia(ping.RoomId, ping.GuestId, ping.Name, ping.AvatarTone);
+            return Results.NoContent();
+        });
+
+        endpoints.MapPost("/api/presence/media", (MediaStatePing? ping, RoomService rooms) =>
+        {
+            if (ping is null ||
+                string.IsNullOrWhiteSpace(ping.RoomId) ||
+                string.IsNullOrWhiteSpace(ping.GuestId))
+            {
+                return Results.BadRequest();
+            }
+
+            rooms.UpdateMediaState(
+                ping.RoomId,
+                ping.GuestId,
+                ping.MicOn,
+                ping.CameraOn,
+                ping.ScreenOn,
+                ping.ScreenWithAudio);
             return Results.NoContent();
         });
 
