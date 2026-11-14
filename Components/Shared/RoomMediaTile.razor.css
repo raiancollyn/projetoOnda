@@ -437,3 +437,25 @@
 .media-tile.has-fullscreen .media-focus-hint {
     margin-right: 3.8rem;
 }
+/* A dica "Ver grade" fica só no palco; em tela cheia ela vira o botão de saída. */
+.media-tile.is-featured .media-focus-hint {
+    display: none;
+}
+
+.media-tile-shell:fullscreen .media-tile.is-featured .media-focus-hint,
+.media-tile-shell:-webkit-full-screen .media-tile.is-featured .media-focus-hint {
+    position: absolute;
+    z-index: 4;
+    top: 50%;
+    right: 5.55rem;
+    display: inline-flex;
+    margin-right: 0;
+    transform: translateY(-50%);
+}
+
+@media (max-width: 700px) {
+    .media-tile-shell:fullscreen .media-tile.is-featured .media-focus-hint,
+    .media-tile-shell:-webkit-full-screen .media-tile.is-featured .media-focus-hint {
+        right: 4.9rem;
+    }
+}
