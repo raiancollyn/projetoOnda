@@ -20,6 +20,26 @@ Antes de ativar:
 3. Aponte `onda.dpbr.net` para a VM e libere 443/TCP (e 80/TCP para o Certbot/redirect).
 4. Emita ou use um certificado que cubra `onda.dpbr.net` antes de ativar o bloco 443.
 
+Copie também a página de manutenção para fora da aplicação. Ela precisa continuar
+disponível quando o Blazor estiver reiniciando:
+
+```bash
+sudo mkdir -p /var/www/onda
+sudo cp maintenance.html /var/www/onda/maintenance.html
+```
+
+O `onda.conf.example` já configura:
+
+```nginx
+error_page 502 503 504 /maintenance.html;
+```
+
+Assim, durante um deploy, o usuário vê a página **O Onda está voltando** com o
+botão **Tentar novamente**, em vez do 502 padrão do Nginx. O
+`proxy_intercept_errors on` também cobre respostas 502 vindas do próprio upstream.
+
+Ative o site:
+
 ```bash
 sudo cp onda.conf.example /etc/nginx/sites-available/onda
 sudo ln -s /etc/nginx/sites-available/onda /etc/nginx/sites-enabled/onda

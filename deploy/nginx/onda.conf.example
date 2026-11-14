@@ -27,8 +27,19 @@ server {
     ssl_certificate     /etc/letsencrypt/live/onda.dpbr.net/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/onda.dpbr.net/privkey.pem;
 
+    # Página estática exibida durante reinícios/deploys do app.
+    error_page 502 503 504 /maintenance.html;
+
+    location = /maintenance.html {
+        root /var/www/onda;
+        internal;
+        add_header Cache-Control "no-store, no-cache, must-revalidate";
+        try_files /maintenance.html =404;
+    }
+
     location / {
         proxy_pass http://127.0.0.1:PORTA_DO_APP;
+        proxy_intercept_errors on;
 
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
