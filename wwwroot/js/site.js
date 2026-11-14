@@ -450,6 +450,33 @@
         }
     }
 
+    async function shareRoomLink(data) {
+        if (!data?.url) {
+            return "failed";
+        }
+
+        const plugin = nativeMediaPlugin();
+        if (plugin?.shareLink) {
+            try {
+                const result = await plugin.shareLink(data);
+                return result?.shared ? "shared" : "failed";
+            } catch {
+                return "failed";
+            }
+        }
+
+        if (typeof navigator.share === "function") {
+            try {
+                await navigator.share(data);
+                return "shared";
+            } catch (error) {
+                return error?.name === "AbortError" ? "aborted" : "failed";
+            }
+        }
+
+        return "unsupported";
+    }
+
     function resolveFullscreenTarget(target) {
         if (target instanceof Element) {
             return target;
@@ -2061,6 +2088,7 @@
         scrollToBottom,
         focusElement,
         shareLink,
+        shareRoomLink,
         reloadPage,
         readScreenQuality,
         saveScreenQuality,

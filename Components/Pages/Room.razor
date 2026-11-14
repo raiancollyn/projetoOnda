@@ -187,7 +187,7 @@ else if (!_joined)
 else
 {
     <div class="room-app">
-        <header class="room-header @(ShowRoomInstallButton ? "has-install" : null)">
+        <header class="room-header">
             <div class="room-header-left">
                 <Brand Light="true" OnNavigate="RequestRoomExitAsync" />
                 <span class="room-header-divider" aria-hidden="true"></span>
@@ -206,44 +206,136 @@ else
             <div class="room-header-actions">
                 <span class="room-live-badge"><span class="live-dot"></span> ao vivo</span>
                 <RoomAge CreatedAt="_room!.CreatedAt" />
-                <ThemeToggle />
-                @if (ShowRoomInstallButton)
-                {
+
+                <div class="room-menu-wrap">
                     <button type="button"
-                            class="room-header-button room-install-button"
-                            @onclick="OpenInstallDialog"
-                            aria-label="Instalar o Onda"
-                            title="Instalar o Onda">
-                        <Icon Name="download" Size="16" />
-                        <span class="header-button-label">Apps</span>
+                            class="room-header-button room-menu-trigger"
+                            @onclick="ToggleSettingsMenu"
+                            aria-haspopup="menu"
+                            aria-expanded="@(_settingsMenuOpen ? "true" : "false")"
+                            aria-label="Configurações da sala"
+                            title="Configurações">
+                        <Icon Name="settings" Size="16" />
+                        <span class="header-button-label">Configurações</span>
                     </button>
-                }
-                @if (_nativeMedia || _isSfu)
-                {
-                    <button type="button" class="room-header-button"
-                            @onclick="OpenAudioRouteDialogAsync"
-                            aria-label="Ajustes de áudio"
-                            title="Ajustes de áudio">
-                        <Icon Name="headphones" Size="16" />
-                        <span class="header-button-label">Áudio</span>
+
+                    @if (_settingsMenuOpen)
+                    {
+                        <div class="room-menu-panel room-settings-menu" role="menu" aria-label="Configurações da sala">
+                            <div class="room-menu-section">
+                                <span class="room-menu-heading">Tema</span>
+                                <div class="room-theme-options" data-theme-control>
+                                    <button type="button"
+                                            class="room-theme-choice"
+                                            data-theme-choice="light"
+                                            role="menuitemradio"
+                                            aria-checked="false"
+                                            aria-label="Tema claro"
+                                            title="Tema claro"
+                                            @onclick="CloseRoomMenus">
+                                        <Icon Name="sun" Size="16" />
+                                        <span>Claro</span>
+                                    </button>
+                                    <button type="button"
+                                            class="room-theme-choice"
+                                            data-theme-choice="dark"
+                                            role="menuitemradio"
+                                            aria-checked="false"
+                                            aria-label="Tema escuro"
+                                            title="Tema escuro"
+                                            @onclick="CloseRoomMenus">
+                                        <Icon Name="moon" Size="16" />
+                                        <span>Escuro</span>
+                                    </button>
+                                    <button type="button"
+                                            class="room-theme-choice"
+                                            data-theme-choice="system"
+                                            role="menuitemradio"
+                                            aria-checked="false"
+                                            aria-label="Tema do sistema"
+                                            title="Tema do sistema"
+                                            @onclick="CloseRoomMenus">
+                                        <Icon Name="monitor" Size="16" />
+                                        <span>Sistema</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            @if (ShowRoomInstallButton)
+                            {
+                                <div class="room-menu-divider"></div>
+                                <button type="button" class="room-menu-item" role="menuitem" @onclick="OpenInstallDialogFromMenu">
+                                    <span class="room-menu-item-icon"><Icon Name="download" Size="17" /></span>
+                                    <span class="room-menu-item-copy">
+                                        <strong>Instalar o Onda</strong>
+                                        <small>Aplicativo para este dispositivo</small>
+                                    </span>
+                                </button>
+                            }
+
+                            <div class="room-menu-divider"></div>
+
+                            @if (_nativeMedia || _isSfu)
+                            {
+                                <button type="button" class="room-menu-item" role="menuitem" @onclick="OpenAudioSettingsFromMenuAsync">
+                                    <span class="room-menu-item-icon"><Icon Name="headphones" Size="17" /></span>
+                                    <span class="room-menu-item-copy">
+                                        <strong>Áudio</strong>
+                                        <small>Entrada, saída e volume</small>
+                                    </span>
+                                </button>
+                            }
+
+                            <button type="button" class="room-menu-item" role="menuitem" @onclick="OpenQualitySettingsFromMenu">
+                                <span class="room-menu-item-icon"><Icon Name="sliders" Size="17" /></span>
+                                <span class="room-menu-item-copy">
+                                    <strong>Qualidade</strong>
+                                    <small>Tela, câmera e transmissão</small>
+                                </span>
+                            </button>
+                        </div>
+                    }
+                </div>
+
+                <div class="room-menu-wrap">
+                    <button type="button"
+                            class="room-header-button room-menu-trigger"
+                            @onclick="ToggleShareMenu"
+                            aria-haspopup="menu"
+                            aria-expanded="@(_shareMenuOpen ? "true" : "false")"
+                            aria-label="Compartilhar sala"
+                            title="Compartilhar">
+                        <Icon Name="share" Size="16" />
+                        <span class="header-button-label">Compartilhar</span>
                     </button>
-                }
-                <button type="button" class="room-header-button" @onclick="OpenQualityDialog"
-                        aria-label="Ajustes de qualidade de tela e câmera"
-                        title="@($"Qualidade — tela: {_screenQuality.Summary}; câmera: {_cameraQuality.Summary}")">
-                    <Icon Name="sliders" Size="16" />
-                    <span class="header-button-label">Qualidade</span>
-                </button>
-                <button type="button" class="room-header-button" @onclick="CopyRoomLinkAsync" aria-label="Copiar link da sala" title="Copiar link da sala">
-                    <Icon Name="link" Size="16" />
-                    <span class="header-button-label">Copiar link</span>
-                </button>
-                <button type="button" class="room-leave-button" @onclick="RequestRoomExitAsync" disabled="@_leaveBusy" aria-label="Sair da sala" title="Sair da sala">
-                    <Icon Name="phone-off" Size="16" />
-                    <span class="header-button-label">Sair</span>
-                </button>
+
+                    @if (_shareMenuOpen)
+                    {
+                        <div class="room-menu-panel room-share-menu" role="menu" aria-label="Compartilhar sala">
+                            <button type="button" class="room-menu-item" role="menuitem" @onclick="CopyRoomLinkFromMenuAsync">
+                                <span class="room-menu-item-icon"><Icon Name="copy" Size="17" /></span>
+                                <span class="room-menu-item-copy">
+                                    <strong>Copiar link</strong>
+                                    <small>Copiar o endereço da sala</small>
+                                </span>
+                            </button>
+                            <button type="button" class="room-menu-item" role="menuitem" @onclick="ShareRoomLinkFromMenuAsync">
+                                <span class="room-menu-item-icon"><Icon Name="share" Size="17" /></span>
+                                <span class="room-menu-item-copy">
+                                    <strong>Compartilhar</strong>
+                                    <small>Abrir os aplicativos do dispositivo</small>
+                                </span>
+                            </button>
+                        </div>
+                    }
+                </div>
             </div>
         </header>
+
+        @if (_settingsMenuOpen || _shareMenuOpen)
+        {
+            <div class="room-menu-scrim" @onclick="CloseRoomMenus" aria-hidden="true"></div>
+        }
 
         <main class="room-main">
             <section class="stage-shell" aria-label="Palco da sala">
@@ -1435,6 +1527,8 @@ else
     private string? _jsError;
     private bool _audioBlocked;
     private string? _actionPending;
+    private bool _settingsMenuOpen;
+    private bool _shareMenuOpen;
 
     private bool _localMicOn;
     private bool _hasMic;
@@ -1605,6 +1699,7 @@ else
     private bool ShowSpotlight => _focusedPeerId is not null && Shares.Count > 1 && Shares.Any(p => p.Id == _focusedPeerId);
 
     private bool ShowRoomInstallButton =>
+        !_nativeMedia &&
         _installContextLoaded &&
         !_installDesktopApp &&
         !(_installStandalone && _installMobile);
@@ -3270,6 +3365,83 @@ else
         _gateError = null;
         StateHasChanged();
         return Task.CompletedTask;
+    }
+
+    private void ToggleSettingsMenu()
+    {
+        _shareMenuOpen = false;
+        _settingsMenuOpen = !_settingsMenuOpen;
+    }
+
+    private void ToggleShareMenu()
+    {
+        _settingsMenuOpen = false;
+        _shareMenuOpen = !_shareMenuOpen;
+    }
+
+    private void CloseRoomMenus()
+    {
+        _settingsMenuOpen = false;
+        _shareMenuOpen = false;
+    }
+
+    private void OpenInstallDialogFromMenu()
+    {
+        CloseRoomMenus();
+        OpenInstallDialog();
+    }
+
+    private async Task OpenAudioSettingsFromMenuAsync()
+    {
+        CloseRoomMenus();
+        await OpenAudioRouteDialogAsync();
+    }
+
+    private async Task OpenQualitySettingsFromMenu()
+    {
+        CloseRoomMenus();
+        await OpenQualityDialog();
+    }
+
+    private async Task CopyRoomLinkFromMenuAsync()
+    {
+        CloseRoomMenus();
+        await CopyRoomLinkAsync();
+    }
+
+    private async Task ShareRoomLinkFromMenuAsync()
+    {
+        CloseRoomMenus();
+        await ShareRoomLinkAsync();
+    }
+
+    private async Task ShareRoomLinkAsync()
+    {
+        try
+        {
+            var result = await JS.InvokeAsync<string>(
+                "onda.shareRoomLink",
+                new
+                {
+                    title = _room?.Name ?? "Onda",
+                    text = $"Entre na sala {_room?.Name ?? "Onda"} no Onda.",
+                    url = RoomUrl
+                });
+
+            if (string.IsNullOrEmpty(result) ||
+                string.Equals(result, "unsupported", StringComparison.Ordinal))
+            {
+                await CopyRoomLinkAsync();
+            }
+            else if (string.Equals(result, "failed", StringComparison.Ordinal))
+            {
+                Toasts.Show("Não foi possível abrir o compartilhamento.", ToastKind.Error);
+            }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            await CopyRoomLinkAsync();
+        }
     }
 
     private async Task CopyRoomLinkAsync()
