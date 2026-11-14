@@ -41,6 +41,75 @@ O caminho mais completo continua sendo a VPS com Docker Compose: ela entrega app
    - opcionalmente `TURN_URL`, `TURN_USERNAME` e `TURN_PASSWORD`.
 5. Configure um proxy reverso HTTPS para a porta alocada. O app escuta HTTP; câmera, microfone e tela exigem HTTPS fora de `localhost`.
 
+### Página de manutenção durante o restart
+
+Durante um deploy o Wings encerra o processo e a alocação deixa de aceitar
+conexões. O Nginx responde **502** antes de o app existir novamente. A página de
+manutenção não pode vir do container do app, porque ele está desligado; ela deve
+ficar no **host do Nginx**, fora do ciclo de vida do Pterodactyl.
+
+Copie a página para o host:
+
+```bash
+sudo mkdir -p /var/www/onda
+sudo cp deploy/nginx/maintenance.html /var/www/onda/maintenance.html
+```
+
+No server block que aponta para a alocação:
+
+```nginx
+map $http_upgrade $onda_connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+error_page 502 503 504 /maintenance.html;
+
+location = /maintenance.html {
+    root /var/www/onda;
+    internal;
+    add_header Cache-Control "no-store, no-cache, must-revalidate";
+}
+
+location / {
+    # IP:PORTA da allocation primária do servidor no Pterodactyl.
+    proxy_pass http://IP_DO_NO:PORTA_DA_ALOCACAO;
+
+    proxy_intercept_errors on;
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $onda_connection_upgrade;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+A alocação aparece no painel do servidor. Se o Nginx estiver no **mesmo nó** e a
+alocação estiver publicada em todas as interfaces, normalmente pode usar
+`127.0.0.1:PORTA_DA_ALOCACAO`. Confirme com:
+
+```bash
+ss -ltnp | grep PORTA_DA_ALOCACAO
+```
+
+Se o Nginx estiver em outro host, use o IP do nó ou da máquina que hospeda o
+Wings. Não use o IP interno do container: ele muda a cada recriação.
+
+A página continua disponível mesmo quando o container do app está parado. O
+botão **Tentar novamente** recarrega a mesma URL depois que o deploy termina.
+
+Se o Nginx também estiver rodando em outro servidor do Pterodactyl, coloque
+`maintenance.html` no volume desse servidor de Nginx e ajuste o `root` para o
+caminho correspondente. O importante é que o arquivo esteja no mesmo container
+do Nginx, nunca no container do app.
+
+> Se houver Cloudflare na frente, use `error_page 502 503 504 =200 /maintenance.html;`
+> para o Cloudflare repassar o HTML em vez de mostrar a página de erro dele.
+> Nesse caso o status HTTP será 200 e os monitores externos não verão o 502.
+
 O install clona o repositório para `/home/container/source`. No boot, `start.sh` publica o projeto em `/home/container/app` e executa o app. O primeiro boot precisa de internet para restaurar o NuGet; os seguintes usam o cache.
 
 ### Atualizações automáticas
