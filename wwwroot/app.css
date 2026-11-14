@@ -653,3 +653,65 @@ h1:focus-visible {
         scroll-behavior: auto !important;
     }
 }
+
+/* ---------- Pull to refresh (app nativo) ---------- */
+
+.onda-pull-refresh {
+    position: fixed;
+    top: 0;
+    left: 50%;
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 2.4rem;
+    padding: 0.45rem 0.8rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--paper);
+    color: var(--ink-soft);
+    font-size: 0.7rem;
+    font-weight: 600;
+    pointer-events: none;
+    opacity: 0;
+    transform: translate(-50%, -64px);
+    transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.onda-pull-refresh.is-visible {
+    opacity: 1;
+}
+
+.onda-pull-refresh.is-loading {
+    opacity: 1;
+    transform: translate(-50%, 12px);
+}
+
+.onda-pull-refresh-spinner {
+    width: 0.9rem;
+    height: 0.9rem;
+    border: 2px solid var(--line-strong);
+    border-top-color: var(--lime);
+    border-radius: 50%;
+    animation: onda-pull-spin 700ms linear infinite;
+}
+
+.onda-pull-refresh.is-loading .onda-pull-refresh-spinner {
+    display: block;
+}
+
+.onda-pull-refresh:not(.is-loading) .onda-pull-refresh-spinner {
+    display: none;
+}
+
+@keyframes onda-pull-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+html[data-theme="dark"] .onda-pull-refresh {
+    border-color: var(--line);
+    background: #11231e;
+    color: var(--ink-soft);
+}

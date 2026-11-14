@@ -1733,6 +1733,138 @@
 
         void ping();
     }
+
+    let pullStartY = null;
+    let pullDistance = 0;
+    let pullIndicator = null;
+
+    function installPullToRefresh() {
+        if (window.__ondaPullToRefreshInstalled || !isNativeMobile()) {
+            return;
+        }
+
+        window.__ondaPullToRefreshInstalled = true;
+
+        pullIndicator = document.createElement("div");
+        pullIndicator.className = "onda-pull-refresh";
+        pullIndicator.setAttribute("role", "status");
+        pullIndicator.setAttribute("aria-live", "polite");
+        pullIndicator.innerHTML =
+            '<span class="onda-pull-refresh-spinner" aria-hidden="true"></span>' +
+            '<span class="onda-pull-refresh-label">Puxe para atualizar</span>';
+        document.body.appendChild(pullIndicator);
+
+        const label = pullIndicator.querySelector(".onda-pull-refresh-label");
+        const threshold = 72;
+
+        const resetPull = () => {
+            pullStartY = null;
+            pullDistance = 0;
+            if (!pullIndicator) {
+                return;
+            }
+
+            pullIndicator.classList.remove("is-visible", "is-loading");
+            pullIndicator.style.transform = "";
+            if (label) {
+                label.textContent = "Puxe para atualizar";
+            }
+        };
+
+        const showPull = (distance) => {
+            if (!pullIndicator) {
+                return;
+            }
+
+            const offset = Math.min(64, distance * 0.55);
+            pullIndicator.classList.add("is-visible");
+            pullIndicator.style.transform = `translate(-50%, ${offset}px)`;
+            if (label) {
+                label.textContent = distance >= threshold
+                    ? "Solte para atualizar"
+                    : "Puxe para atualizar";
+            }
+        };
+
+        const finishPull = () => {
+            const shouldRefresh = pullDistance >= threshold;
+            const roomActive = exitGuardActive && Boolean(document.querySelector(".room-app"));
+            const distance = pullDistance;
+            resetPull();
+
+            if (!shouldRefresh) {
+                return;
+            }
+
+            if (roomActive) {
+                if (exitGuardRef) {
+                    try {
+                        Promise.resolve(exitGuardRef.invokeMethodAsync("OnRefreshRequested"))
+                            .catch(() => { });
+                    } catch {
+                        // The circuit may already be gone.
+                    }
+                }
+                return;
+            }
+
+            if (pullIndicator) {
+                pullIndicator.classList.add("is-visible", "is-loading");
+                if (label) {
+                    label.textContent = "Atualizando...";
+                }
+            }
+            window.setTimeout(() => location.reload(), distance > 0 ? 140 : 0);
+        };
+
+        document.addEventListener("touchstart", (event) => {
+            if (event.touches.length !== 1 || window.scrollY > 0) {
+                return;
+            }
+
+            if (document.querySelector(".modal-card, .modal-backdrop, [role='dialog']")) {
+                return;
+            }
+
+            const target = event.target;
+            if (target instanceof Element &&
+                target.closest("input, textarea, select, button, a, [contenteditable='true']")) {
+                return;
+            }
+
+            pullStartY = event.touches[0].clientY;
+            pullDistance = 0;
+        }, { passive: true });
+
+        document.addEventListener("touchmove", (event) => {
+            if (pullStartY === null || event.touches.length !== 1) {
+                return;
+            }
+
+            const deltaY = event.touches[0].clientY - pullStartY;
+            if (deltaY <= 0) {
+                resetPull();
+                return;
+            }
+
+            if (event.cancelable) {
+                event.preventDefault();
+            }
+
+            pullDistance = deltaY;
+            showPull(pullDistance);
+        }, { passive: false });
+
+        document.addEventListener("touchend", finishPull, { passive: true });
+        document.addEventListener("touchcancel", resetPull, { passive: true });
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", installPullToRefresh, { once: true });
+    } else {
+        installPullToRefresh();
+    }
+
     window.onda = Object.freeze({
         copyText,
         scrollToBottom,

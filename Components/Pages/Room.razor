@@ -846,6 +846,23 @@ else
     </div>
 </Modal>
 
+<Modal IsOpen="_showRefreshDialog"
+       Title="Recarregar a sala?"
+       Eyebrow="ATUALIZAR"
+       OnClose="CancelRoomRefresh">
+    <p class="room-exit-copy">
+        A sala e a chamada serão recarregadas. Você continuará na mesma conversa depois da reconexão.
+    </p>
+    <div class="modal-actions modal-actions-end">
+        <button type="button" class="button button-ghost" @onclick="CancelRoomRefresh">
+            Cancelar
+        </button>
+        <button type="button" class="button button-accent" @onclick="ConfirmRoomRefreshAsync">
+            <Icon Name="wave" Size="16" /> Recarregar
+        </button>
+    </div>
+</Modal>
+
 <Modal IsOpen="_showAudioRouteDialog"
        Title="Áudio da chamada"
        Eyebrow="CHAMADA"
@@ -1441,6 +1458,7 @@ else
     private bool _showQualityDialog;
     private bool _showAudioRouteDialog;
     private bool _showExitDialog;
+    private bool _showRefreshDialog;
     private bool _exitGuardStarted;
     private bool _audioRouteBusy;
     private bool _audioNativeMode;
@@ -3220,6 +3238,29 @@ else
     }
 
     private void CancelRoomExit() => _showExitDialog = false;
+
+    [JSInvokable]
+    public Task OnRefreshRequested()
+    {
+        return InvokeAsync(() =>
+        {
+            if (_disposed || !_joined)
+            {
+                return;
+            }
+
+            _showRefreshDialog = true;
+            StateHasChanged();
+        });
+    }
+
+    private void CancelRoomRefresh() => _showRefreshDialog = false;
+
+    private async Task ConfirmRoomRefreshAsync()
+    {
+        _showRefreshDialog = false;
+        await ReloadPageAsync();
+    }
 
     private async Task ConfirmRoomExitAsync()
     {
