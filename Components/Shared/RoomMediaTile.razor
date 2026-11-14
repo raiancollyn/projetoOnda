@@ -74,11 +74,11 @@
     {
         <button type="button"
                 class="media-fit-button"
-                aria-label="@(IsContain ? "Preencher a área" : "Mostrar imagem inteira")"
+                aria-label="@(IsContain ? "Aproximar imagem" : "Ver imagem inteira")"
                 aria-pressed="@(IsContain ? "true" : "false")"
-                title="@(IsContain ? "Preencher a área" : "Mostrar imagem inteira")"
+                title="@(IsContain ? "Aproximar imagem" : "Ver imagem inteira")"
                 @onclick="ToggleFit">
-            <Icon Name="@(IsContain ? "maximize" : "minimize")" Size="16" />
+            <Icon Name="@(IsContain ? "zoom-in" : "zoom-out")" Size="16" />
         </button>
         <button type="button"
                 class="media-fullscreen-button"
