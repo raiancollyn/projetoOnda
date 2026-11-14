@@ -215,6 +215,11 @@ app.MapGet("/health", () => Results.Ok(new
     chatStorage = "sqlite"
 })).AllowAnonymous();
 
+app.MapGet("/api/rooms/{code}/exists", (string code, RoomService rooms) =>
+{
+    return Results.Ok(new { exists = rooms.RoomExists(code) });
+}).AllowAnonymous();
+
 app.MapGet("/download/android", async (
     IHttpClientFactory httpClientFactory,
     IMemoryCache memoryCache,

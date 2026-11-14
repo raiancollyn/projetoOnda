@@ -276,6 +276,21 @@ public sealed class RoomService
         }
     }
 
+    /// <summary>Checks whether a room still exists without joining it.</summary>
+    public bool RoomExists(string? rawCode)
+    {
+        var code = InputRules.NormalizeRoomCode(rawCode);
+        if (code is null)
+        {
+            return false;
+        }
+
+        lock (_sync)
+        {
+            return EnsureRoomLocked(code) is not null;
+        }
+    }
+
     /// <summary>
     /// Creates a short-lived, one-time token that lets the desktop app continue
     /// as the current guest (including room ownership).
