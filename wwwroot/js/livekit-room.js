@@ -41,6 +41,7 @@ const DEFAULT_CAMERA_QUALITY = Object.freeze({
 let dotnetRef = null;
 let room = null;
 let initialized = false;
+let viewerMode = false;
 let roomId = "";
 let selfId = "";
 let reconnectInProgress = false;
@@ -168,6 +169,7 @@ export async function initialize(ref, roomCode, guestId, config = {}) {
     dotnetRef = ref;
     roomId = roomCode || "";
     selfId = guestId || "";
+    viewerMode = Boolean(config?.viewerMode);
     quality = normalizeScreenQuality(config?.quality);
     cameraQuality = normalizeCameraQuality(config?.cameraQuality);
     local = createLocalState();
@@ -194,6 +196,10 @@ export async function initialize(ref, roomCode, guestId, config = {}) {
     setupHeartbeat();
     setupPageLifecycle();
     installGestureUnlock();
+
+    if (viewerMode) {
+        stopHeartbeat();
+    }
 
     room = new Room({
         adaptiveStream: true,
@@ -241,14 +247,18 @@ export async function initialize(ref, roomCode, guestId, config = {}) {
         return false;
     }
 
-    notifyAudioBlocked(!room.canPlaybackAudio);
+    if (!viewerMode) {
+        notifyAudioBlocked(!room.canPlaybackAudio);
+    }
 
     // Let the room paint before the browser permission prompt appears.
-    window.setTimeout(() => {
-        if (initialized && room) {
-            void acquireMicrophone(true);
-        }
-    }, 220);
+    if (!viewerMode) {
+        window.setTimeout(() => {
+            if (initialized && room) {
+                void acquireMicrophone(true);
+            }
+        }, 220);
+    }
 
     return true;
 }
@@ -1333,6 +1343,11 @@ function handleTrackSubscribed(track, publication, participant) {
         return;
     }
 
+    if (viewerMode && track.kind === "audio") {
+        // Native audio is already rendering the room soundtrack.
+        return;
+    }
+
     const identity = participant.identity;
 
     if (track.kind === "video") {
@@ -1798,7 +1813,7 @@ function notify(method, ...args) {
 }
 
 function notifyMediaState() {
-    if (!initialized) {
+    if (!initialized || viewerMode) {
         return;
     }
 
@@ -1817,6 +1832,10 @@ function notifyError(context, message) {
 }
 
 function notifyAudioBlocked(blocked) {
+    if (viewerMode) {
+        return;
+    }
+
     if (local.audioBlocked !== blocked) {
         local.audioBlocked = blocked;
         notify("OnAudioPlaybackBlocked", blocked);

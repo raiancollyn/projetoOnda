@@ -1473,7 +1473,9 @@ else
 
     private IReadOnlyList<ParticipantView> Shares =>
         _nativeMedia
-            ? []
+            ? _room?.Participants
+                .Where(p => p.Id != Guest.Id && (p.CameraOn || p.ScreenOn))
+                .ToArray() ?? []
             : _room?.Participants.Where(p => p.CameraOn || p.ScreenOn).ToArray() ?? [];
 
     private IReadOnlyList<int> ScreenHeightOptions =>
@@ -1794,6 +1796,7 @@ else
             var useLiveKit = MediaSettings.EffectiveProvider == MediaOptions.LiveKitProvider;
             string? livekitUrl = null;
             string? livekitToken = null;
+            string? viewerToken = null;
 
             if (useLiveKit)
             {
@@ -1801,6 +1804,10 @@ else
                 {
                     livekitUrl = MediaSettings.LiveKit.Url;
                     livekitToken = LiveKitTokens.CreateRoomToken(Code, Guest.Id, Guest.Name);
+                    viewerToken = LiveKitTokens.CreateRoomToken(
+                        Code,
+                        $"{Guest.Id}-viewer",
+                        $"{Guest.Name} (vídeo)");
                     _isSfu = true;
                 }
                 catch (Exception)
@@ -1868,6 +1875,42 @@ else
                         Guest.AvatarTone);
                     _nativeMedia = true;
                     _jsReady = true;
+
+                    if (viewerToken is not null &&
+                        !string.IsNullOrWhiteSpace(livekitUrl))
+                    {
+                        try
+                        {
+                            var viewerConfiguration = new
+                            {
+                                provider = "livekit",
+                                livekitUrl,
+                                livekitToken = viewerToken,
+                                selfName = Guest.Name,
+                                viewerMode = true,
+                                iceServers = configuration.iceServers,
+                                quality = configuration.quality,
+                                cameraQuality = configuration.cameraQuality
+                            };
+                            var viewerModulePath = new Uri(
+                                new Uri(Nav.BaseUri),
+                                "js/livekit-room.js").AbsolutePath;
+                            _jsModule = await JS.InvokeAsync<IJSObjectReference>(
+                                "import",
+                                viewerModulePath);
+                            await _jsModule.InvokeVoidAsync(
+                                "initialize",
+                                _dotNetRef,
+                                Code,
+                                $"{Guest.Id}-viewer",
+                                viewerConfiguration);
+                        }
+                        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+                        {
+                            _jsModule = null;
+                        }
+                    }
+
                     await OnLocalMediaStateChanged(true, true, false, false, false);
                     return;
                 }
