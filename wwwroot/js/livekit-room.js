@@ -533,6 +533,8 @@ async function ensureViewerVideoAfterResume() {
             // The old connection may already be closed.
         }
 
+        await new Promise((resolve) => setTimeout(resolve, 250));
+
         for (const video of videos) {
             if (video.__ondaLiveKitTrack) {
                 try {
