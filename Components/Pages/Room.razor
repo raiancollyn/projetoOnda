@@ -261,14 +261,27 @@ else
                                 </div>
                             </div>
 
-                            @if (ShowRoomInstallButton)
+                            @if (ShowCompanionAppOption)
                             {
                                 <div class="room-menu-divider"></div>
+                                <a class="room-menu-item" role="menuitem" href="@_companionAppUrl">
+                                    <span class="room-menu-item-icon">
+                                        <Icon Name="@(_installMobile ? "smartphone" : "monitor")" Size="17" />
+                                    </span>
+                                    <span class="room-menu-item-copy">
+                                        <strong>@(_installMobile ? "Abrir no app de celular" : "Abrir no Onda Desktop")</strong>
+                                        <small>Sua sessão e suas permissões continuam</small>
+                                    </span>
+                                </a>
+                            }
+
+                            @if (ShowRoomInstallButton)
+                            {
                                 <button type="button" class="room-menu-item" role="menuitem" @onclick="OpenInstallDialogFromMenu">
                                     <span class="room-menu-item-icon"><Icon Name="download" Size="17" /></span>
                                     <span class="room-menu-item-copy">
                                         <strong>Instalar o Onda</strong>
-                                        <small>Aplicativo para este dispositivo</small>
+                                        <small>@(_installMobile ? "APK ou web app" : "Instalador ou web app")</small>
                                     </span>
                                 </button>
                             }
@@ -1212,19 +1225,27 @@ else
        Eyebrow="APLICATIVOS"
        OnClose="CloseInstallDialog">
     <div class="room-install-options">
+        @if (ShowMobileInstallOption)
+        {
+            <a class="room-install-option" href="/download/android">
+                <span class="room-install-option-icon"><Icon Name="smartphone" Size="20" /></span>
+                <span class="room-install-option-copy">
+                    <strong>Instalar aplicativo de celular</strong>
+                    <small>Baixe o APK mais recente e instale no Android.</small>
+                </span>
+                <Icon Name="download" Size="16" />
+            </a>
+        }
+
         @if (ShowDesktopInstallOption)
         {
-            <a class="room-install-option" href="@DesktopDeepLink">
+            <a class="room-install-option" href="/download/desktop">
                 <span class="room-install-option-icon"><Icon Name="monitor" Size="20" /></span>
                 <span class="room-install-option-copy">
-                    <strong>Abrir no Onda Desktop</strong>
-                    <small>Se o app estiver instalado, sua sessão e permissões continuam nele.</small>
+                    <strong>Instalar aplicativo desktop</strong>
+                    <small>Baixe o instalador mais recente para Windows.</small>
                 </span>
-                <Icon Name="arrow-up-right" Size="16" />
-            </a>
-            <a class="room-install-download" href="/download/desktop">
-                <Icon Name="download" Size="14" />
-                Ainda não tem o app? Baixar instalador
+                <Icon Name="download" Size="16" />
             </a>
         }
 
@@ -1512,7 +1533,7 @@ else
     private bool _sessionExpired;
     private bool _handoffBypass;
     private bool _handoffUrlCleared;
-    private string _desktopHandoffUrl = string.Empty;
+    private string _companionAppUrl = string.Empty;
 
     private string _gatePassword = string.Empty;
     private string? _gateError;
@@ -1698,26 +1719,21 @@ else
 
     private bool ShowSpotlight => _focusedPeerId is not null && Shares.Count > 1 && Shares.Any(p => p.Id == _focusedPeerId);
 
-    private bool ShowRoomInstallButton =>
+    private bool ShowCompanionAppOption =>
         !_nativeMedia &&
         _installContextLoaded &&
-        !_installDesktopApp &&
-        !(_installStandalone && _installMobile);
+        !_installDesktopApp;
+
+    private bool ShowRoomInstallButton => ShowCompanionAppOption;
+
+    private bool ShowMobileInstallOption =>
+        ShowCompanionAppOption && _installMobile;
 
     private bool ShowDesktopInstallOption =>
-        _installContextLoaded &&
-        !_installDesktopApp &&
-        !_installMobile;
-
-    private string DesktopDeepLink =>
-        string.IsNullOrWhiteSpace(_desktopHandoffUrl)
-            ? $"onda://sala/{Uri.EscapeDataString(Code)}"
-            : _desktopHandoffUrl;
+        ShowCompanionAppOption && !_installMobile;
 
     private bool ShowWebInstallOption =>
-        _installContextLoaded &&
-        !_installDesktopApp &&
-        !_installStandalone;
+        ShowCompanionAppOption && !_installStandalone;
 
     private bool CanSendChat => !string.IsNullOrWhiteSpace(_chatDraft);
 
@@ -3125,6 +3141,10 @@ else
             _installStandalone = context.IsStandalone;
             _installMobile = context.IsMobile;
             _installContextLoaded = true;
+            if (ShowCompanionAppOption)
+            {
+                _companionAppUrl = BuildCompanionAppUrl();
+            }
 
             if (!_disposed)
             {
@@ -3139,18 +3159,6 @@ else
 
     private void OpenInstallDialog()
     {
-        var baseLink = $"onda://sala/{Uri.EscapeDataString(Code)}";
-        _desktopHandoffUrl = baseLink;
-
-        if (ShowDesktopInstallOption)
-        {
-            var handoff = Rooms.CreateHandoffToken(Code, Guest.Id);
-            if (handoff.Success && !string.IsNullOrWhiteSpace(handoff.Token))
-            {
-                _desktopHandoffUrl = $"{baseLink}?handoff={Uri.EscapeDataString(handoff.Token)}";
-            }
-        }
-
         _showInstallDialog = true;
     }
 
@@ -3371,6 +3379,19 @@ else
     {
         _shareMenuOpen = false;
         _settingsMenuOpen = !_settingsMenuOpen;
+        if (_settingsMenuOpen && ShowCompanionAppOption)
+        {
+            _companionAppUrl = BuildCompanionAppUrl();
+        }
+    }
+
+    private string BuildCompanionAppUrl()
+    {
+        var baseLink = $"onda://sala/{Uri.EscapeDataString(Code)}";
+        var handoff = Rooms.CreateHandoffToken(Code, Guest.Id);
+        return handoff.Success && !string.IsNullOrWhiteSpace(handoff.Token)
+            ? $"{baseLink}?handoff={Uri.EscapeDataString(handoff.Token)}"
+            : baseLink;
     }
 
     private void ToggleShareMenu()

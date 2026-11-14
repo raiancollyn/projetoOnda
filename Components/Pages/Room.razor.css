@@ -804,6 +804,7 @@ html[data-theme-preference="system"] .room-theme-choice[data-theme-choice="syste
     color: rgba(247, 243, 235, 0.8);
     font: inherit;
     text-align: left;
+    text-decoration: none;
     cursor: pointer;
     transition: background-color 150ms ease, color 150ms ease;
 }
