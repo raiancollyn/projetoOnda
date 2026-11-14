@@ -460,9 +460,6 @@ public sealed class ChatStore
                 CREATE INDEX IF NOT EXISTS ix_room_messages_room_time
                     ON room_messages(room_id, sent_at_ms);
 
-                CREATE INDEX IF NOT EXISTS ix_rooms_empty_since
-                    ON rooms(empty_since_ms);
-
                 CREATE TABLE IF NOT EXISTS room_visits (
                     id TEXT NOT NULL PRIMARY KEY,
                     room_id TEXT NOT NULL,
@@ -484,6 +481,19 @@ public sealed class ChatStore
         }
 
         EnsureRoomColumn(connection, "empty_since_ms", "INTEGER NULL");
+
+        // This index must be created only after the column exists on databases
+        // created by older versions. Creating it in the schema batch above
+        // fails on those databases because CREATE TABLE IF NOT EXISTS does not
+        // add new columns.
+        using (var index = connection.CreateCommand())
+        {
+            index.CommandText = """
+                CREATE INDEX IF NOT EXISTS ix_rooms_empty_since
+                    ON rooms(empty_since_ms);
+                """;
+            index.ExecuteNonQuery();
+        }
 
         // After a process restart no browser/native session is authoritative.
         // Give every room a fresh 30-minute grace window, while preserving an
