@@ -1599,6 +1599,21 @@
         return Boolean(result?.enabled);
     }
 
+    async function setNativeScreenQuality(width, height, frameRate, bitrateKbps) {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            return false;
+        }
+
+        const result = await plugin.setScreenQuality({
+            width: Math.round(Number(width) || 1920),
+            height: Math.round(Number(height) || 1080),
+            frameRate: Math.round(Number(frameRate) || 30),
+            bitrateKbps: Math.round(Number(bitrateKbps) || 4000)
+        });
+        return Boolean(result?.applied);
+    }
+
     async function getNativeCameraOptions() {
         const plugin = nativeMediaPlugin();
         if (!plugin) {
@@ -2158,6 +2173,7 @@
         startNativeScreenShare,
         stopNativeScreenShare,
         getNativeScreenShare,
+        setNativeScreenQuality,
         registerNativeMicListener,
         getNativeMic,
         registerExitGuard,

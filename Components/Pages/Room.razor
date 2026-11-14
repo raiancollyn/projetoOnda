@@ -4153,6 +4153,24 @@ else
             {
                 failed = true;
             }
+
+            try
+            {
+                var nativeScreenApplied = await JS.InvokeAsync<bool>(
+                    "onda.setNativeScreenQuality",
+                    _screenQuality.Width,
+                    _screenQuality.Height,
+                    _screenQuality.FrameRate,
+                    _screenQuality.BitrateKbps);
+                if (_localScreenOn && !nativeScreenApplied)
+                {
+                    screenApplied = false;
+                }
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                failed = true;
+            }
         }
 
         if (_localScreenOn || _localCameraOn)
