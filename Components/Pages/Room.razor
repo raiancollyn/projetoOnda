@@ -3451,8 +3451,7 @@ else
 
     private async Task GoHomeAsync()
     {
-        await DisableRoomExitGuardAsync();
-        Nav.NavigateTo("/");
+        await LeaveRoomAsync();
     }
 
     private async Task ReloadPageAsync()
@@ -3956,7 +3955,8 @@ else
         Rooms.ChatChanged -= HandleChatChanged;
         Rooms.SignalReceived -= HandleSignal;
 
-        if (_joined)
+        var preserveNativeCall = _nativeMedia;
+        if (_joined && !preserveNativeCall)
         {
             Rooms.LeaveRoom(Code, Guest.Id);
             _joined = false;
@@ -3965,19 +3965,26 @@ else
         await DisableRoomExitGuardAsync();
         await ReleaseWakeLockAsync();
         await StopPresenceHeartbeatAsync();
-        await StopNativeCallAsync();
+
+        if (!preserveNativeCall)
+        {
+            await StopNativeCallAsync();
+
+            if (_jsModule is not null)
+            {
+                try
+                {
+                    await _jsModule.InvokeVoidAsync("disposeRoom");
+                }
+                catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException)
+                {
+                    // The circuit may already be disconnected.
+                }
+            }
+        }
 
         if (_jsModule is not null)
         {
-            try
-            {
-                await _jsModule.InvokeVoidAsync("disposeRoom");
-            }
-            catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException)
-            {
-                // The circuit may already be disconnected.
-            }
-
             try
             {
                 await _jsModule.DisposeAsync();
