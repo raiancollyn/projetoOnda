@@ -1472,7 +1472,9 @@ else
     private static readonly JsonSerializerOptions QualityJsonOptions = new(JsonSerializerDefaults.Web);
 
     private IReadOnlyList<ParticipantView> Shares =>
-        _room?.Participants.Where(p => p.CameraOn || p.ScreenOn).ToArray() ?? [];
+        _nativeMedia
+            ? []
+            : _room?.Participants.Where(p => p.CameraOn || p.ScreenOn).ToArray() ?? [];
 
     private IReadOnlyList<int> ScreenHeightOptions =>
         BuildHeightOptions([720, 1080, 1440, 2160], _screenCapabilities?.MaxHeight);
