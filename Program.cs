@@ -103,6 +103,115 @@ app.Use(async (context, next) =>
     await next();
 });
 
+// Social crawlers do not execute Blazor. Serve a small HTML shell with the
+// room-specific Open Graph data so WhatsApp, Telegram and similar apps can
+// render a useful preview for shared room links.
+app.Use(async (context, next) =>
+{
+    if ((!HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method)) ||
+        !context.Request.Path.StartsWithSegments("/sala", out var remaining))
+    {
+        await next();
+        return;
+    }
+
+    var userAgent = context.Request.Headers.UserAgent.ToString();
+    if (!LooksLikeSocialCrawler(userAgent))
+    {
+        await next();
+        return;
+    }
+
+    var code = remaining.Value?.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries)
+        .FirstOrDefault();
+    if (string.IsNullOrWhiteSpace(code))
+    {
+        await next();
+        return;
+    }
+
+    var roomService = context.RequestServices.GetRequiredService<RoomService>();
+    var room = roomService.GetSnapshot(code);
+    if (room is null)
+    {
+        await next();
+        return;
+    }
+
+    static bool LooksLikeSocialCrawler(string userAgent)
+    {
+        string[] markers =
+        [
+            "WhatsApp",
+            "facebookexternalhit",
+            "Facebot",
+            "Twitterbot",
+            "TelegramBot",
+            "Slackbot",
+            "Discordbot",
+            "LinkedInBot",
+            "Pinterest",
+            "SkypeUriPreview",
+            "Applebot",
+            "Embedly",
+            "Quora Link Preview",
+            "redditbot"
+        ];
+
+        return markers.Any(marker => userAgent.Contains(marker, StringComparison.OrdinalIgnoreCase));
+    }
+
+    var encoder = System.Text.Encodings.Web.HtmlEncoder.Default;
+    var title = $"{room.Name} no Onda";
+    var description = room.Participants.Count == 0
+        ? "Entre nesta sala do Onda para conversar por voz, compartilhar a tela e trocar mensagens."
+        : $"{room.Participants.Count} pessoa{(room.Participants.Count == 1 ? "" : "s")} na sala. Entre pelo link para conversar por voz, compartilhar a tela e trocar mensagens.";
+    var roomUrl = $"https://onda.dpbr.net/sala/{Uri.EscapeDataString(room.Id)}";
+    var imageUrl = "https://onda.dpbr.net/og/onda-share.png?v=1";
+    var html = $"""
+        <!doctype html>
+        <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>{encoder.Encode(title)}</title>
+          <meta name="description" content="{encoder.Encode(description)}" />
+          <meta property="og:site_name" content="Onda" />
+          <meta property="og:title" content="{encoder.Encode(title)}" />
+          <meta property="og:description" content="{encoder.Encode(description)}" />
+          <meta property="og:type" content="website" />
+          <meta property="og:locale" content="pt_BR" />
+          <meta property="og:url" content="{encoder.Encode(roomUrl)}" />
+          <meta property="og:image" content="{encoder.Encode(imageUrl)}" />
+          <meta property="og:image:secure_url" content="{encoder.Encode(imageUrl)}" />
+          <meta property="og:image:type" content="image/png" />
+          <meta property="og:image:width" content="1200" />
+          <meta property="og:image:height" content="630" />
+          <meta property="og:image:alt" content="Onda: conversas que fluem. Voz, tela e presença no navegador, no Windows e no Android." />
+          <meta name="twitter:card" content="summary_large_image" />
+          <meta name="twitter:title" content="{encoder.Encode(title)}" />
+          <meta name="twitter:description" content="{encoder.Encode(description)}" />
+          <meta name="twitter:image" content="{encoder.Encode(imageUrl)}" />
+          <link rel="image_src" href="{encoder.Encode(imageUrl)}" />
+          <link rel="canonical" href="{encoder.Encode(roomUrl)}" />
+        </head>
+        <body>
+          <p><a href="{encoder.Encode(roomUrl)}">Abrir a sala {encoder.Encode(room.Name)} no Onda</a></p>
+        </body>
+        </html>
+        """;
+
+    context.Response.StatusCode = StatusCodes.Status200OK;
+    context.Response.ContentType = "text/html; charset=utf-8";
+    context.Response.Headers.CacheControl = "public,max-age=60";
+    if (HttpMethods.IsHead(context.Request.Method))
+    {
+        return;
+    }
+
+    await context.Response.WriteAsync(html, context.RequestAborted);
+});
+
 app.MapStaticAssets();
 var staticContentTypes = new FileExtensionContentTypeProvider();
 staticContentTypes.Mappings[".webmanifest"] = "application/manifest+json";
