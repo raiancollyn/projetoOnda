@@ -1472,11 +1472,11 @@ else
     private static readonly JsonSerializerOptions QualityJsonOptions = new(JsonSerializerDefaults.Web);
 
     private IReadOnlyList<ParticipantView> Shares =>
-        _nativeMedia
-            ? _room?.Participants
-                .Where(p => p.Id != Guest.Id && (p.CameraOn || p.ScreenOn))
-                .ToArray() ?? []
-            : _room?.Participants.Where(p => p.CameraOn || p.ScreenOn).ToArray() ?? [];
+        _nativeMedia && _jsModule is null
+            ? []
+            : _room?.Participants
+                .Where(p => p.CameraOn || p.ScreenOn)
+                .ToArray() ?? [];
 
     private IReadOnlyList<int> ScreenHeightOptions =>
         BuildHeightOptions([720, 1080, 1440, 2160], _screenCapabilities?.MaxHeight);
@@ -1898,12 +1898,16 @@ else
                             _jsModule = await JS.InvokeAsync<IJSObjectReference>(
                                 "import",
                                 viewerModulePath);
-                            await _jsModule.InvokeVoidAsync(
+                            var viewerReady = await _jsModule.InvokeAsync<bool>(
                                 "initialize",
                                 _dotNetRef,
                                 Code,
                                 $"{Guest.Id}-viewer",
                                 viewerConfiguration);
+                            if (!viewerReady)
+                            {
+                                _jsModule = null;
+                            }
                         }
                         catch (Exception ex) when (ex is JSException or JSDisconnectedException)
                         {
