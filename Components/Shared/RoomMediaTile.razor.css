@@ -269,7 +269,8 @@
     display: none;
 }
 
-.media-fullscreen-button {
+.media-fullscreen-button,
+.media-fit-button {
     position: absolute;
     z-index: 4;
     top: 0.6rem;
@@ -296,14 +297,16 @@
         transform 180ms ease;
 }
 
-.media-fullscreen-button:hover {
+.media-fullscreen-button:hover,
+.media-fit-button:hover {
     border-color: transparent;
     background: var(--lime);
     color: var(--ink);
     transform: scale(1.04);
 }
 
-.media-fullscreen-button:focus-visible {
+.media-fullscreen-button:focus-visible,
+.media-fit-button:focus-visible {
     outline: 2px solid var(--lime);
     outline-offset: 2px;
 }
@@ -315,7 +318,8 @@
 
 .media-tile-shell.is-overlay-hidden .media-topline,
 .media-tile-shell.is-overlay-hidden .media-caption,
-.media-tile-shell.is-overlay-hidden .media-fullscreen-button {
+.media-tile-shell.is-overlay-hidden .media-fullscreen-button,
+.media-tile-shell.is-overlay-hidden .media-fit-button {
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
@@ -346,7 +350,8 @@
 }
 
 @media (max-width: 700px) {
-    .media-fullscreen-button {
+    .media-fullscreen-button,
+.media-fit-button {
         top: 0.45rem;
         right: 0.45rem;
         width: 1.8rem;
@@ -406,4 +411,29 @@
 
 .media-tile video.has-stream {
     opacity: 1;
+}
+
+.media-fit-button {
+    right: 3.1rem;
+}
+
+.media-tile.is-contain video {
+    object-fit: contain;
+}
+
+.media-tile.is-cover video {
+    object-fit: cover;
+}
+@media (max-width: 700px) {
+    .media-fit-button {
+        right: 2.6rem;
+    }
+
+    .media-tile.has-fullscreen .media-focus-hint {
+        margin-right: 3.5rem;
+    }
+}
+
+.media-tile.has-fullscreen .media-focus-hint {
+    margin-right: 3.8rem;
 }
