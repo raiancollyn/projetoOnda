@@ -392,7 +392,7 @@ else
                                         <Icon Name="grid" Size="14" /> Ver grade
                                     </button>
                                 }
-                                @if (_localScreenOn)
+                                @if (_localScreenOn && !_nativeMedia)
                                 {
                                     <button type="button"
                                             class="stage-grid-button stage-screen-control"
@@ -632,7 +632,7 @@ else
                         <button type="button"
                                 class="dock-control dock-screen-control @(_localScreenOn ? "is-active" : "is-off")"
                                 @onclick="ToggleScreenAsync"
-                                disabled="@(!_jsReady || _nativeMedia || _actionPending is not null)"
+                                disabled="@(!_jsReady || _actionPending is not null)"
                                 aria-pressed="@(_localScreenOn ? "true" : "false")"
                                 aria-label="@(_localScreenOn ? "Parar compartilhamento de tela" : "Compartilhar tela")"
                                 title="@(_localScreenOn ? "Parar compartilhamento de tela" : "Compartilhar tela")">
@@ -2081,17 +2081,19 @@ else
 
                     var nativeMicOn = true;
                     var nativeCameraOn = false;
+                    var nativeScreenOn = false;
                     try
                     {
                         nativeMicOn = await JS.InvokeAsync<bool>("onda.getNativeMic");
                         nativeCameraOn = await JS.InvokeAsync<bool>("onda.getNativeCamera");
+                        nativeScreenOn = await JS.InvokeAsync<bool>("onda.getNativeScreenShare");
                     }
                     catch (Exception ex) when (ex is JSException or JSDisconnectedException)
                     {
                         // Keep conservative defaults if the native bridge is still starting.
                     }
 
-                    await OnLocalMediaStateChanged(nativeMicOn, true, nativeCameraOn, false, false);
+                    await OnLocalMediaStateChanged(nativeMicOn, true, nativeCameraOn, nativeScreenOn, false);
                     return;
                 }
                 catch (Exception ex) when (ex is JSException or JSDisconnectedException)
@@ -2570,7 +2572,7 @@ else
             return Task.CompletedTask;
         }
 
-        return OnLocalMediaStateChanged(enabled, true, _localCameraOn, false, false);
+        return OnLocalMediaStateChanged(enabled, true, _localCameraOn, _localScreenOn, false);
     }
 
     [JSInvokable]
@@ -2581,7 +2583,18 @@ else
             return Task.CompletedTask;
         }
 
-        return OnLocalMediaStateChanged(_localMicOn, true, enabled, false, false);
+        return OnLocalMediaStateChanged(_localMicOn, true, enabled, _localScreenOn, false);
+    }
+
+    [JSInvokable]
+    public Task OnNativeScreenChanged(bool enabled)
+    {
+        if (_disposed || !_nativeMedia)
+        {
+            return Task.CompletedTask;
+        }
+
+        return OnLocalMediaStateChanged(_localMicOn, true, _localCameraOn, enabled, false);
     }
 
     [JSInvokable]
@@ -2944,7 +2957,18 @@ else
 
     private async Task ToggleScreenAsync()
     {
-        if (_jsModule is null || _actionPending is not null)
+        if (_actionPending is not null)
+        {
+            return;
+        }
+
+        if (_nativeMedia)
+        {
+            await ToggleNativeScreenAsync();
+            return;
+        }
+
+        if (_jsModule is null)
         {
             return;
         }
@@ -2953,6 +2977,65 @@ else
         try
         {
             await _jsModule.InvokeVoidAsync("toggleScreenShare");
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            Toasts.Show("Não foi possível compartilhar a tela.", ToastKind.Error);
+        }
+        finally
+        {
+            _actionPending = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleNativeScreenAsync()
+    {
+        var wasSharing = _localScreenOn;
+        _actionPending = "screen";
+        StateHasChanged();
+        try
+        {
+            if (wasSharing)
+            {
+                await JS.InvokeVoidAsync("onda.stopNativeScreenShare");
+            }
+            else
+            {
+                var requested = await JS.InvokeAsync<bool>(
+                    "onda.startNativeScreenShare",
+                    ToJsQuality(_screenQuality));
+                if (!requested)
+                {
+                    Toasts.Show("Não foi possível solicitar o compartilhamento de tela.", ToastKind.Error);
+                    return;
+                }
+            }
+
+            var targetState = !wasSharing;
+            var observed = false;
+            for (var attempt = 0; attempt < 12; attempt++)
+            {
+                await Task.Delay(500);
+                var current = await JS.InvokeAsync<bool>("onda.getNativeScreenShare");
+                if (current == targetState)
+                {
+                    observed = true;
+                    break;
+                }
+            }
+
+            var screenOn = await JS.InvokeAsync<bool>("onda.getNativeScreenShare");
+            var cameraOn = await JS.InvokeAsync<bool>("onda.getNativeCamera");
+            var micOn = await JS.InvokeAsync<bool>("onda.getNativeMic");
+            await OnLocalMediaStateChanged(micOn, true, cameraOn, screenOn, false);
+
+            if (!wasSharing && !observed)
+            {
+                Toasts.Show(
+                    "O compartilhamento de tela não foi autorizado.",
+                    ToastKind.Info);
+            }
         }
         catch (Exception ex) when (ex is JSException or JSDisconnectedException)
         {

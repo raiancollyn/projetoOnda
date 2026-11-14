@@ -1569,6 +1569,36 @@
         return Boolean(result?.enabled);
     }
 
+    async function startNativeScreenShare(quality) {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            return false;
+        }
+
+        const result = await plugin.startScreenShare({ quality });
+        return Boolean(result?.requested);
+    }
+
+    async function stopNativeScreenShare() {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            return false;
+        }
+
+        const result = await plugin.stopScreenShare();
+        return Boolean(result?.requested);
+    }
+
+    async function getNativeScreenShare() {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            return false;
+        }
+
+        const result = await plugin.getScreenShare();
+        return Boolean(result?.enabled);
+    }
+
     async function getNativeCameraOptions() {
         const plugin = nativeMediaPlugin();
         if (!plugin) {
@@ -1702,12 +1732,14 @@
         }
 
         try {
-            const [mic, camera] = await Promise.all([
+            const [mic, camera, screen] = await Promise.all([
                 plugin.getMic(),
-                plugin.getCamera()
+                plugin.getCamera(),
+                plugin.getScreenShare()
             ]);
             await nativeMicDotNetRef.invokeMethodAsync("OnNativeMicChanged", Boolean(mic?.enabled));
             await nativeMicDotNetRef.invokeMethodAsync("OnNativeCameraChanged", Boolean(camera?.enabled));
+            await nativeMicDotNetRef.invokeMethodAsync("OnNativeScreenChanged", Boolean(screen?.enabled));
         } catch {
             // The WebView may be gone or the call may have ended.
         }
@@ -1723,6 +1755,11 @@
                 }
             });
             window.addEventListener("focus", () => void syncNativeMicState());
+            window.setInterval(() => {
+                if (!document.hidden) {
+                    void syncNativeMicState();
+                }
+            }, 10_000);
         }
 
         window.setTimeout(() => void syncNativeMicState(), 300);
@@ -2118,6 +2155,9 @@
         switchNativeCamera,
         setNativeCameraTorch,
         setNativeCameraQuality,
+        startNativeScreenShare,
+        stopNativeScreenShare,
+        getNativeScreenShare,
         registerNativeMicListener,
         getNativeMic,
         registerExitGuard,
