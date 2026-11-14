@@ -52,6 +52,8 @@ let visibilityHandler = null;
 let pageHideHandler = null;
 let gestureHandler = null;
 let viewerVisibilityHandler = null;
+let viewerReconnectTimer = null;
+let intentionalViewerReconnect = false;
 let pipObserver = null;
 let lastPipPeerId = null;
 let pendingPipPeerId = null;
@@ -295,7 +297,7 @@ function bindRoomEvents(activeRoom) {
     });
     activeRoom.on(RoomEvent.Disconnected, (reason) => {
         reconnectInProgress = false;
-        if (!initialized) {
+        if (!initialized || intentionalViewerReconnect) {
             return;
         }
 
@@ -457,6 +459,10 @@ function installViewerVisibility() {
 
         const videos = Array.from(document.querySelectorAll("video[data-peer-id]"));
         if (document.visibilityState !== "visible") {
+            if (viewerReconnectTimer) {
+                clearTimeout(viewerReconnectTimer);
+                viewerReconnectTimer = null;
+            }
             for (const video of videos) {
                 video.pause();
                 video.classList.remove("has-stream");
@@ -464,16 +470,17 @@ function installViewerVisibility() {
             return;
         }
 
-        syncMediaElements();
+        syncMediaElements(true);
         if (room && room.state === "disconnected" && viewerUrl && viewerToken) {
             room.connect(viewerUrl, viewerToken, { autoSubscribe: true })
                 .then(() => {
-                    syncMediaElements();
+                    syncMediaElements(true);
                     for (const video of videos) {
                         video.play()
                             .then(() => video.classList.add("has-stream"))
                             .catch(() => { });
                     }
+                    viewerReconnectTimer = setTimeout(ensureViewerVideoAfterResume, 1200);
                 })
                 .catch(() => {
                     // The next resume will retry.
@@ -488,11 +495,76 @@ function installViewerVisibility() {
                     // The track may be waiting for a new subscription.
                 });
         }
+
+        if (viewerReconnectTimer) {
+            clearTimeout(viewerReconnectTimer);
+        }
+        viewerReconnectTimer = setTimeout(ensureViewerVideoAfterResume, 1200);
     };
     document.addEventListener("visibilitychange", viewerVisibilityHandler);
 }
 
+async function ensureViewerVideoAfterResume() {
+    viewerReconnectTimer = null;
+    if (!initialized || !viewerMode || !room || !viewerUrl || !viewerToken) {
+        return;
+    }
+
+    const videos = Array.from(document.querySelectorAll("video[data-peer-id]"));
+    const missingVideo = videos.some((video) =>
+        !video.__ondaLiveKitTrack ||
+        !video.srcObject ||
+        video.videoWidth === 0 ||
+        video.readyState < 2
+    );
+    if (!missingVideo) {
+        return;
+    }
+
+    if (intentionalViewerReconnect || reconnectInProgress) {
+        return;
+    }
+
+    intentionalViewerReconnect = true;
+    try {
+        try {
+            await room.disconnect();
+        } catch {
+            // The old connection may already be closed.
+        }
+
+        for (const video of videos) {
+            if (video.__ondaLiveKitTrack) {
+                try {
+                    video.__ondaLiveKitTrack.detach(video);
+                } catch {
+                    // Already detached.
+                }
+            }
+            video.__ondaLiveKitTrack = null;
+            video.classList.remove("has-stream");
+        }
+        remoteVideos.clear();
+
+        await room.connect(viewerUrl, viewerToken, { autoSubscribe: true });
+        syncMediaElements(true);
+        for (const video of videos) {
+            video.play()
+                .then(() => video.classList.add("has-stream"))
+                .catch(() => { });
+        }
+    } catch (error) {
+        console.warn("Onda: viewer reconnect after resume failed", error);
+    } finally {
+        intentionalViewerReconnect = false;
+    }
+}
+
 function removeViewerVisibility() {
+    if (viewerReconnectTimer) {
+        clearTimeout(viewerReconnectTimer);
+        viewerReconnectTimer = null;
+    }
     if (viewerVisibilityHandler) {
         document.removeEventListener("visibilitychange", viewerVisibilityHandler);
         viewerVisibilityHandler = null;
@@ -1685,7 +1757,7 @@ function getVolume(peerId, channel) {
     return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : DEFAULT_VOLUME;
 }
 
-export function syncMediaElements() {
+export function syncMediaElements(force = false) {
     if (!initialized) {
         return;
     }
@@ -1704,7 +1776,7 @@ export function syncMediaElements() {
         }
 
         const previousTrack = video.__ondaLiveKitTrack || null;
-        if (previousTrack === targetTrack) {
+        if (previousTrack === targetTrack && !force) {
             continue;
         }
 

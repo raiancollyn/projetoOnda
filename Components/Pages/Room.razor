@@ -2735,6 +2735,12 @@ else
                 _cameraOptionsError = "Não foi possível trocar a câmera. Verifique a permissão do navegador.";
                 _activeCameraId = _currentCameraId;
             }
+            else if (_nativeMedia)
+            {
+                // CameraX switches asynchronously; give it a moment so the
+                // torch capability is reported for the new camera.
+                await Task.Delay(350);
+            }
 
             await RefreshCameraOptionsAsync();
         }
