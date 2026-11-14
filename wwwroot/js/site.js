@@ -1591,7 +1591,7 @@
             } catch {
                 // The guard still works through beforeunload.
             }
-            if (!isNativeMobile()) {
+            if (!isNativeMobile() && !window.ondaDesktop?.isDesktop) {
                 window.addEventListener("beforeunload", handleBeforeUnload);
             }
             window.addEventListener("popstate", handleExitPopState);
