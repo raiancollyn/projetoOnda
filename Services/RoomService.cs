@@ -20,6 +20,10 @@ public sealed class RoomService
 
     public static readonly TimeSpan StaleParticipantAfter = TimeSpan.FromMinutes(2);
 
+    // The native service owns audio/video independently of the suspended WebView.
+    // Keep a long lease so delayed HTTP heartbeats do not remove a live call.
+    public static readonly TimeSpan NativeMediaLease = TimeSpan.FromMinutes(30);
+
     /// <summary>
     /// A room that becomes empty without an explicit close (a page reload,
     /// closed tab or lost circuit) is kept briefly so a refresh can rejoin it.
@@ -652,6 +656,10 @@ public sealed class RoomService
             }
 
             participant.LastSeen = _time.GetUtcNow();
+            if (participant.NativeMediaActiveUntil is not null)
+            {
+                participant.NativeMediaActiveUntil = participant.LastSeen.Add(NativeMediaLease);
+            }
             if (changed)
             {
                 room.LastActivityAt = participant.LastSeen;
@@ -823,7 +831,7 @@ public sealed class RoomService
                 return;
             }
 
-            var leaseUntil = now.AddMinutes(10);
+            var leaseUntil = now.Add(NativeMediaLease);
             if (room.Participants.TryGetValue(guestId, out var participant))
             {
                 participant.LastSeen = now;
