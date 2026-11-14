@@ -839,10 +839,10 @@ html.onda-pip .pip-audio-card {
     align-items: center;
     gap: 0.45rem;
     max-width: 90%;
-    max-height: calc(100% - 0.9rem);
+    max-height: calc(100% - 1.1rem);
     box-sizing: border-box;
-    overflow: hidden;
-    padding: 0.2rem;
+    overflow: visible;
+    padding: 0.55rem 0.35rem 0.35rem;
     color: var(--cream);
     text-align: center;
 }
