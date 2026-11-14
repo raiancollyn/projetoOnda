@@ -1527,6 +1527,35 @@
         return Boolean(result?.enabled);
     }
 
+    async function getNativeCameraOptions() {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            return null;
+        }
+
+        return plugin.getCameraOptions();
+    }
+
+    async function switchNativeCamera(deviceId) {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            return false;
+        }
+
+        const result = await plugin.switchCamera({ deviceId: deviceId || "" });
+        return Boolean(result?.changed);
+    }
+
+    async function setNativeCameraTorch(enabled) {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            return false;
+        }
+
+        const result = await plugin.setCameraTorch({ enabled: Boolean(enabled) });
+        return Boolean(result?.changed);
+    }
+
     let nativeMicDotNetRef = null;
     let nativeMicSyncInstalled = false;
 
@@ -1944,6 +1973,9 @@
         setNativeMic,
         setNativeCamera,
         getNativeCamera,
+        getNativeCameraOptions,
+        switchNativeCamera,
+        setNativeCameraTorch,
         registerNativeMicListener,
         getNativeMic,
         registerExitGuard,

@@ -512,7 +512,7 @@ else
                             <span class="dock-control-label">Câmera</span>
                         </button>
 
-                        @if (_localCameraOn && (_cameraDevices.Count > 1 || _cameraTorchSupported))
+                        @if (_localCameraOn && (_nativeMedia || _cameraDevices.Count > 1 || _cameraTorchSupported))
                         {
                             <button type="button"
                                     class="dock-control dock-camera-settings"
@@ -2671,14 +2671,16 @@ else
 
     private async Task RefreshCameraOptionsAsync()
     {
-        if (_jsModule is null || !_localCameraOn)
+        if ((!_nativeMedia && _jsModule is null) || !_localCameraOn)
         {
             return;
         }
 
         try
         {
-            var options = await _jsModule.InvokeAsync<CameraOptionsView>("getCameraOptions");
+            var options = _nativeMedia
+                ? await JS.InvokeAsync<CameraOptionsView>("onda.getNativeCameraOptions")
+                : await _jsModule!.InvokeAsync<CameraOptionsView>("getCameraOptions");
             if (options is null)
             {
                 return;
@@ -2712,7 +2714,7 @@ else
 
     private async Task SwitchCameraAsync()
     {
-        if (_jsModule is null ||
+        if ((!_nativeMedia && _jsModule is null) ||
             _cameraOptionsBusy ||
             string.IsNullOrWhiteSpace(_activeCameraId) ||
             _activeCameraId == _currentCameraId)
@@ -2725,7 +2727,9 @@ else
         _cameraOptionsError = null;
         try
         {
-            var changed = await _jsModule.InvokeAsync<bool>("switchCamera", target);
+            var changed = _nativeMedia
+                ? await JS.InvokeAsync<bool>("onda.switchNativeCamera", target)
+                : await _jsModule!.InvokeAsync<bool>("switchCamera", target);
             if (!changed)
             {
                 _cameraOptionsError = "Não foi possível trocar a câmera. Verifique a permissão do navegador.";
@@ -2748,7 +2752,7 @@ else
 
     private async Task ToggleCameraTorchAsync(ChangeEventArgs args)
     {
-        if (_jsModule is null || _cameraOptionsBusy)
+        if ((!_nativeMedia && _jsModule is null) || _cameraOptionsBusy)
         {
             return;
         }
@@ -2758,7 +2762,9 @@ else
         _cameraOptionsError = null;
         try
         {
-            var changed = await _jsModule.InvokeAsync<bool>("setCameraTorch", enabled);
+            var changed = _nativeMedia
+                ? await JS.InvokeAsync<bool>("onda.setNativeCameraTorch", enabled)
+                : await _jsModule!.InvokeAsync<bool>("setCameraTorch", enabled);
             if (changed)
             {
                 _cameraTorchOn = enabled;
