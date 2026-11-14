@@ -3,13 +3,21 @@ using Onda.Models;
 
 namespace Onda.Services;
 
+public sealed record PersistedRoom(
+    string Id,
+    string Name,
+    string OwnerId,
+    string OwnerName,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset LastActivityAt,
+    DateTimeOffset? EmptySince,
+    string? PasswordSalt,
+    string? PasswordHash);
+
 /// <summary>
-/// SQLite-backed persistence for room metadata and chat history.
-///
-/// Rooms are authoritative only while they have participants. On process
-/// startup every persisted room is orphaned (browser circuits are gone), so the
-/// database is cleared. Rooms are also deleted as soon as their participant
-/// count reaches zero, which removes their entire chat history.
+/// SQLite-backed persistence for room metadata, visit history and chat.
+/// Rooms survive process restarts; empty rooms are removed after the
+/// RoomService grace period.
 /// </summary>
 public sealed class ChatStore
 {
@@ -54,18 +62,19 @@ public sealed class ChatStore
         string ownerName,
         DateTimeOffset createdAt,
         string? passwordSalt,
-        string? passwordHash)
+        string? passwordHash,
+        DateTimeOffset? emptySince)
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
         command.CommandText = """
             INSERT INTO rooms (
                 id, name, owner_id, owner_name, created_at_ms, last_activity_ms,
-                password_salt, password_hash
+                password_salt, password_hash, empty_since_ms
             )
             VALUES (
                 $id, $name, $ownerId, $ownerName, $createdAt, $lastActivity,
-                $passwordSalt, $passwordHash
+                $passwordSalt, $passwordHash, $emptySince
             );
             """;
         command.Parameters.AddWithValue("$id", id);
@@ -76,6 +85,9 @@ public sealed class ChatStore
         command.Parameters.AddWithValue("$lastActivity", createdAt.ToUnixTimeMilliseconds());
         command.Parameters.AddWithValue("$passwordSalt", (object?)passwordSalt ?? DBNull.Value);
         command.Parameters.AddWithValue("$passwordHash", (object?)passwordHash ?? DBNull.Value);
+        command.Parameters.AddWithValue(
+            "$emptySince",
+            emptySince.HasValue ? emptySince.Value.ToUnixTimeMilliseconds() : DBNull.Value);
         command.ExecuteNonQuery();
     }
 
@@ -92,6 +104,152 @@ public sealed class ChatStore
         command.Parameters.AddWithValue("$lastActivity", now.ToUnixTimeMilliseconds());
         command.Parameters.AddWithValue("$id", roomId);
         command.ExecuteNonQuery();
+    }
+
+    public PersistedRoom? GetRoom(string roomId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, name, owner_id, owner_name, created_at_ms, last_activity_ms,
+                   empty_since_ms, password_salt, password_hash
+            FROM rooms
+            WHERE id = $id
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$id", roomId);
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return null;
+        }
+
+        return new PersistedRoom(
+            reader.GetString(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(4)),
+            DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(5)),
+            reader.IsDBNull(6) ? null : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(6)),
+            reader.IsDBNull(7) ? null : reader.GetString(7),
+            reader.IsDBNull(8) ? null : reader.GetString(8));
+    }
+
+    public int CountRooms()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM rooms;";
+        return Convert.ToInt32(command.ExecuteScalar() ?? 0);
+    }
+
+    public bool RoomExists(string roomId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1 FROM rooms WHERE id = $id LIMIT 1;";
+        command.Parameters.AddWithValue("$id", roomId);
+        return command.ExecuteScalar() is not null;
+    }
+
+    public void SetEmptySince(string roomId, DateTimeOffset? emptySince)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE rooms
+            SET empty_since_ms = $emptySince
+            WHERE id = $id;
+            """;
+        command.Parameters.AddWithValue(
+            "$emptySince",
+            emptySince.HasValue ? emptySince.Value.ToUnixTimeMilliseconds() : DBNull.Value);
+        command.Parameters.AddWithValue("$id", roomId);
+        command.ExecuteNonQuery();
+    }
+
+    public void StartVisit(
+        string roomId,
+        string guestId,
+        string guestName,
+        int avatarTone,
+        DateTimeOffset joinedAt)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO room_visits (
+                id, room_id, guest_id, guest_name, avatar_tone, joined_at_ms, left_at_ms
+            )
+            VALUES (
+                $id, $roomId, $guestId, $guestName, $avatarTone, $joinedAt, NULL
+            );
+            """;
+        command.Parameters.AddWithValue("$id", Guid.NewGuid().ToString("N"));
+        command.Parameters.AddWithValue("$roomId", roomId);
+        command.Parameters.AddWithValue("$guestId", guestId);
+        command.Parameters.AddWithValue("$guestName", guestName);
+        command.Parameters.AddWithValue("$avatarTone", avatarTone);
+        command.Parameters.AddWithValue("$joinedAt", joinedAt.ToUnixTimeMilliseconds());
+        command.ExecuteNonQuery();
+    }
+
+    public void EndVisit(string roomId, string guestId, DateTimeOffset leftAt)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE room_visits
+            SET left_at_ms = $leftAt
+            WHERE id = (
+                SELECT id
+                FROM room_visits
+                WHERE room_id = $roomId
+                  AND guest_id = $guestId
+                  AND left_at_ms IS NULL
+                ORDER BY joined_at_ms DESC
+                LIMIT 1
+            );
+            """;
+        command.Parameters.AddWithValue("$leftAt", leftAt.ToUnixTimeMilliseconds());
+        command.Parameters.AddWithValue("$roomId", roomId);
+        command.Parameters.AddWithValue("$guestId", guestId);
+        command.ExecuteNonQuery();
+    }
+
+    public IReadOnlyList<string> DeleteExpiredEmptyRooms(DateTimeOffset cutoff)
+    {
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        var ids = new List<string>();
+        using (var delete = connection.CreateCommand())
+        {
+            delete.Transaction = transaction;
+            // RETURNING makes the check-and-delete atomic with respect to a
+            // concurrent join that clears empty_since_ms.
+            delete.CommandText = """
+                DELETE FROM rooms
+                WHERE empty_since_ms IS NOT NULL
+                  AND empty_since_ms <= $cutoff
+                RETURNING id;
+                """;
+            delete.Parameters.AddWithValue("$cutoff", cutoff.ToUnixTimeMilliseconds());
+            using var reader = delete.ExecuteReader();
+            while (reader.Read())
+            {
+                ids.Add(reader.GetString(0));
+            }
+        }
+
+        transaction.Commit();
+        if (ids.Count > 0)
+        {
+            Checkpoint(connection);
+        }
+
+        return ids;
     }
 
     public void AppendMessage(
@@ -194,6 +352,14 @@ public sealed class ChatStore
         using var connection = OpenConnection();
         using var transaction = connection.BeginTransaction();
 
+        using (var deleteVisits = connection.CreateCommand())
+        {
+            deleteVisits.Transaction = transaction;
+            deleteVisits.CommandText = "DELETE FROM room_visits WHERE room_id = $roomId;";
+            deleteVisits.Parameters.AddWithValue("$roomId", roomId);
+            deleteVisits.ExecuteNonQuery();
+        }
+
         using (var deleteMessages = connection.CreateCommand())
         {
             deleteMessages.Transaction = transaction;
@@ -230,6 +396,13 @@ public sealed class ChatStore
     {
         using var connection = OpenConnection();
         using var transaction = connection.BeginTransaction();
+
+        using (var deleteVisits = connection.CreateCommand())
+        {
+            deleteVisits.Transaction = transaction;
+            deleteVisits.CommandText = "DELETE FROM room_visits;";
+            deleteVisits.ExecuteNonQuery();
+        }
 
         using (var deleteMessages = connection.CreateCommand())
         {
@@ -269,7 +442,8 @@ public sealed class ChatStore
                     created_at_ms INTEGER NOT NULL,
                     last_activity_ms INTEGER NOT NULL,
                     password_salt TEXT NULL,
-                    password_hash TEXT NULL
+                    password_hash TEXT NULL,
+                    empty_since_ms INTEGER NULL
                 );
 
                 CREATE TABLE IF NOT EXISTS room_messages (
@@ -285,12 +459,90 @@ public sealed class ChatStore
 
                 CREATE INDEX IF NOT EXISTS ix_room_messages_room_time
                     ON room_messages(room_id, sent_at_ms);
+
+                CREATE INDEX IF NOT EXISTS ix_rooms_empty_since
+                    ON rooms(empty_since_ms);
+
+                CREATE TABLE IF NOT EXISTS room_visits (
+                    id TEXT NOT NULL PRIMARY KEY,
+                    room_id TEXT NOT NULL,
+                    guest_id TEXT NOT NULL,
+                    guest_name TEXT NOT NULL,
+                    avatar_tone INTEGER NOT NULL,
+                    joined_at_ms INTEGER NOT NULL,
+                    left_at_ms INTEGER NULL,
+                    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS ix_room_visits_room_time
+                    ON room_visits(room_id, joined_at_ms);
+
+                CREATE INDEX IF NOT EXISTS ix_room_visits_room_guest
+                    ON room_visits(room_id, guest_id, joined_at_ms);
                 """;
             schema.ExecuteNonQuery();
         }
 
-        ClearAllRooms();
-        _logger.LogInformation("SQLite chat storage ready at {DatabasePath}. Orphaned rooms were cleared.", _databasePath);
+        EnsureRoomColumn(connection, "empty_since_ms", "INTEGER NULL");
+
+        // After a process restart no browser/native session is authoritative.
+        // Give every room a fresh 30-minute grace window, while preserving an
+        // already-running empty window from before the restart.
+        using (var markEmpty = connection.CreateCommand())
+        {
+            markEmpty.CommandText = """
+                UPDATE rooms
+                SET empty_since_ms = $now
+                WHERE empty_since_ms IS NULL;
+                """;
+            markEmpty.Parameters.AddWithValue(
+                "$now",
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            markEmpty.ExecuteNonQuery();
+        }
+
+        // Any visit left open by the previous process ended at startup.
+        using (var closeVisits = connection.CreateCommand())
+        {
+            closeVisits.CommandText = """
+                UPDATE room_visits
+                SET left_at_ms = $now
+                WHERE left_at_ms IS NULL;
+                """;
+            closeVisits.Parameters.AddWithValue(
+                "$now",
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            closeVisits.ExecuteNonQuery();
+        }
+
+        _logger.LogInformation(
+            "SQLite persistence ready at {DatabasePath}; rooms and history are preserved.",
+            _databasePath);
+    }
+
+    private void EnsureRoomColumn(SqliteConnection connection, string column, string definition)
+    {
+        var exists = false;
+        using (var info = connection.CreateCommand())
+        {
+            info.CommandText = "PRAGMA table_info(rooms);";
+            using var reader = info.ExecuteReader();
+            while (reader.Read())
+            {
+                if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+        }
+
+        if (!exists)
+        {
+            using var alter = connection.CreateCommand();
+            alter.CommandText = $"ALTER TABLE rooms ADD COLUMN {column} {definition};";
+            alter.ExecuteNonQuery();
+        }
     }
 
     private void Checkpoint(SqliteConnection connection)

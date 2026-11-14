@@ -37,19 +37,6 @@ builder.Services.AddHttpClient("github", client =>
 
 var app = builder.Build();
 
-var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
-lifetime.ApplicationStopping.Register(() =>
-{
-    try
-    {
-        app.Services.GetRequiredService<ChatStore>().ClearAllRooms();
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "Could not clear the SQLite room store during shutdown.");
-    }
-});
-
 app.Logger.LogInformation(
     "Media provider: {Provider}. Room capacity: {Capacity}. LiveKit URL: {LiveKitUrl}.",
     mediaOptions.EffectiveProvider,

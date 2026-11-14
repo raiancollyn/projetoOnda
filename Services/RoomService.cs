@@ -6,12 +6,14 @@ namespace Onda.Services;
 
 /// <summary>
 /// Realtime room hub for lobby, presence, chat and WebRTC signaling.
-/// Room metadata and chat history are persisted in SQLite while the room has
-/// participants; an empty room is deleted from memory and disk immediately.
+/// Room metadata, visits and chat are persisted in SQLite. Only rooms currently
+/// loaded for a session are kept in memory; empty rooms are removed after
+/// EmptyRoomGrace.
 /// </summary>
 public sealed class RoomService
 {
     public const int MaxChatMessages = 120;
+    public const int MaxStoredMessages = 2000;
     public const int MaxRooms = 500;
     private const int PasswordHashIterations = 120_000;
     private const int PasswordSaltBytes = 16;
@@ -25,11 +27,12 @@ public sealed class RoomService
     public static readonly TimeSpan NativeMediaLease = TimeSpan.FromMinutes(30);
 
     /// <summary>
-    /// A room that becomes empty without an explicit close (a page reload,
-    /// closed tab or lost circuit) is kept briefly so a refresh can rejoin it.
-    /// The janitor deletes it, including all SQLite history, after this window.
+    /// A room that becomes empty is kept in SQLite for this grace window so a
+    /// reload, deploy or temporary disconnection can rejoin it. The janitor
+    /// deletes the room, visits and chat after this window; a join clears the
+    /// empty timestamp and cancels the cleanup.
     /// </summary>
-    public static readonly TimeSpan EmptyRoomGrace = TimeSpan.FromSeconds(30);
+    public static readonly TimeSpan EmptyRoomGrace = TimeSpan.FromMinutes(30);
 
     /// <summary>Short-lived, one-time token used to move a guest identity to the desktop app.</summary>
     public static readonly TimeSpan HandoffLifetime = TimeSpan.FromMinutes(5);
@@ -58,6 +61,88 @@ public sealed class RoomService
     }
 
     public int MaxParticipantsPerRoom => _media.EffectiveMaxParticipants;
+
+    private RoomState? EnsureRoomLocked(string code)
+    {
+        if (_rooms.TryGetValue(code, out var loaded))
+        {
+            return loaded;
+        }
+
+        PersistedRoom? persisted;
+        try
+        {
+            persisted = _chatStore.GetRoom(code);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not load room {RoomCode} from SQLite.", code);
+            return null;
+        }
+
+        if (persisted is null)
+        {
+            return null;
+        }
+        var room = new RoomState
+        {
+            Id = persisted.Id,
+            Name = persisted.Name,
+            OwnerId = persisted.OwnerId,
+            OwnerName = persisted.OwnerName,
+            CreatedAt = persisted.CreatedAt,
+            LastActivityAt = persisted.LastActivityAt,
+            EmptySince = persisted.EmptySince,
+            PasswordSalt = persisted.PasswordSalt,
+            PasswordHash = persisted.PasswordHash
+        };
+
+        _rooms[room.Id] = room;
+        _logger.LogInformation("Room {RoomCode} loaded from SQLite.", room.Id);
+        return room;
+    }
+
+    private void PersistEmptySinceLocked(RoomState room)
+    {
+        try
+        {
+            _chatStore.SetEmptySince(room.Id, room.EmptySince);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not persist the empty state for room {RoomCode}.", room.Id);
+        }
+    }
+
+    private void StartVisitLocked(RoomState room, ParticipantState participant)
+    {
+        try
+        {
+            _chatStore.StartVisit(
+                room.Id,
+                participant.Id,
+                participant.Name,
+                participant.AvatarTone,
+                participant.JoinedAt);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not persist the visit to room {RoomCode}.", room.Id);
+        }
+    }
+
+    private void EndVisitLocked(RoomState room, string guestId, DateTimeOffset leftAt)
+    {
+        try
+        {
+            _chatStore.EndVisit(room.Id, guestId, leftAt);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not persist the exit from room {RoomCode}.", room.Id);
+        }
+    }
+
 
     /// <summary>Raised whenever participants, media state or participant names change.</summary>
     public event Action<string>? RoomChanged;
@@ -105,10 +190,15 @@ public sealed class RoomService
         RoomState room;
         lock (_sync)
         {
-            if (_rooms.Count >= MaxRooms)
+            if (_rooms.Count >= MaxRooms || _chatStore.CountRooms() >= MaxRooms)
             {
-                PurgeEmptyRoomsLocked(now);
-                if (_rooms.Count >= MaxRooms)
+                var expired = _chatStore.DeleteExpiredEmptyRooms(now - EmptyRoomGrace);
+                foreach (var expiredId in expired)
+                {
+                    _rooms.Remove(expiredId);
+                }
+
+                if (_chatStore.CountRooms() >= MaxRooms)
                 {
                     return new CreateRoomResult(false, null, "Muitas salas ativas. Tente novamente em instantes.");
                 }
@@ -137,7 +227,8 @@ public sealed class RoomService
                     room.OwnerName,
                     room.CreatedAt,
                     room.PasswordSalt,
-                    room.PasswordHash);
+                    room.PasswordHash,
+                    room.EmptySince);
             }
             catch (Exception ex)
             {
@@ -165,7 +256,8 @@ public sealed class RoomService
 
         lock (_sync)
         {
-            if (!_rooms.TryGetValue(code, out var room))
+            var room = EnsureRoomLocked(code);
+            if (room is null)
             {
                 return null;
             }
@@ -206,7 +298,8 @@ public sealed class RoomService
         {
             PruneHandoffsLocked(now);
 
-            if (!_rooms.TryGetValue(code, out var room))
+            var room = EnsureRoomLocked(code);
+            if (room is null)
             {
                 return new CreateHandoffResult(false, null, "Essa sala não existe mais.");
             }
@@ -271,7 +364,8 @@ public sealed class RoomService
                 return new RedeemHandoffResult(false, null, 0, "Este link de transferência expirou.");
             }
 
-            if (!_rooms.TryGetValue(code, out var room) ||
+            var room = EnsureRoomLocked(code);
+            if (room is null ||
                 !string.Equals(room.Id, handoff.RoomId, StringComparison.OrdinalIgnoreCase))
             {
                 _handoffs.Remove(token);
@@ -286,6 +380,7 @@ public sealed class RoomService
             }
 
             _handoffs.Remove(token);
+            EndVisitLocked(room, handoff.GuestId, now);
             room.Participants.Remove(handoff.GuestId);
             room.RevokedGuestIds.Add(handoff.GuestId);
             room.HandoffBypassGuestIds.Add(newGuestId);
@@ -302,6 +397,7 @@ public sealed class RoomService
                 room.EmptySince = now;
             }
 
+            PersistEmptySinceLocked(room);
             room.LastActivityAt = now;
             changed = true;
             result = new RedeemHandoffResult(true, previous.Name, previous.AvatarTone, null);
@@ -338,7 +434,8 @@ public sealed class RoomService
 
         lock (_sync)
         {
-            return _rooms.TryGetValue(code, out var room) ? ToViewLocked(room) : null;
+            var room = EnsureRoomLocked(code);
+            return room is null ? null : ToViewLocked(room);
         }
     }
 
@@ -377,14 +474,14 @@ public sealed class RoomService
         RoomView? snapshot = null;
         var status = JoinRoomStatus.Success;
         string? error = null;
-        var becameActive = false;
         var changed = false;
         var chatChanged = false;
         var now = _time.GetUtcNow();
 
         lock (_sync)
         {
-            if (!_rooms.TryGetValue(code, out var room))
+            var room = EnsureRoomLocked(code);
+            if (room is null)
             {
                 return new JoinRoomResult(JoinRoomStatus.NotFound, "Essa sala não existe mais.", null);
             }
@@ -414,8 +511,13 @@ public sealed class RoomService
                 }
 
                 room.LastActivityAt = now;
-                room.EmptySince = null;
-                changed = nameChanged;
+                var wasEmpty = room.EmptySince is not null;
+                if (wasEmpty)
+                {
+                    room.EmptySince = null;
+                    PersistEmptySinceLocked(room);
+                }
+                changed = nameChanged || wasEmpty;
                 snapshot = ToViewLocked(room, includeMessages: true);
             }
             else if (room.HasPassword && !string.Equals(room.OwnerId, guestId, StringComparison.Ordinal) && !handoffBypass)
@@ -453,8 +555,9 @@ public sealed class RoomService
                     };
 
                     room.EmptySince = null;
+                    PersistEmptySinceLocked(room);
+                    StartVisitLocked(room, room.Participants[guestId]);
                     chatChanged = AddSystemMessageLocked(room, $"{normalizedName} entrou na sala.");
-                    becameActive = room.Participants.Count == 1;
                     room.LastActivityAt = now;
                     snapshot = ToViewLocked(room, includeMessages: true);
                     changed = true;
@@ -472,13 +575,9 @@ public sealed class RoomService
             RaiseChatChanged(code);
         }
 
-        if (changed || becameActive)
+        if (changed)
         {
             RaiseRoomChanged(code);
-        }
-
-        if (becameActive)
-        {
             RaiseLobbyChanged();
         }
 
@@ -495,67 +594,45 @@ public sealed class RoomService
 
         var changed = false;
         var chatChanged = false;
-        var roomRemoved = false;
         var now = _time.GetUtcNow();
         lock (_sync)
         {
-            if (!_rooms.TryGetValue(code, out var room))
+            var room = EnsureRoomLocked(code);
+            if (room is null)
             {
                 return;
             }
 
             if (room.Participants.Remove(guestId, out var participant))
             {
+                EndVisitLocked(room, guestId, now);
+                room.LastActivityAt = now;
                 if (room.Participants.Count == 0)
                 {
-                    if (closeIfEmpty)
-                    {
-                        // Explicit "Sair": destroy the room immediately.
-                        _rooms.Remove(code);
-                        DeletePersistedRoomLocked(room.Id);
-                        roomRemoved = true;
-                    }
-                    else
-                    {
-                        // Reloads, closed tabs and lost circuits get a short
-                        // grace window so a refresh can rejoin the same room.
-                        room.EmptySince = now;
-                        room.LastActivityAt = now;
-                        chatChanged = AddSystemMessageLocked(room, $"{participant.Name} saiu da sala.");
-                        changed = true;
-                    }
-                }
-                else
-                {
-                    room.EmptySince = null;
-                    room.LastActivityAt = now;
-                    chatChanged = AddSystemMessageLocked(room, $"{participant.Name} saiu da sala.");
+                    room.EmptySince = now;
                     changed = true;
                 }
-            }
-            else if (closeIfEmpty && room.Participants.Count == 0)
-            {
-                // The pagehide beacon may have removed the participant just
-                // before the explicit Sair request arrived.
-                _rooms.Remove(code);
-                DeletePersistedRoomLocked(room.Id);
-                roomRemoved = true;
+                else if (room.EmptySince is not null)
+                {
+                    room.EmptySince = null;
+                    changed = true;
+                }
+
+                PersistEmptySinceLocked(room);
+                chatChanged = AddSystemMessageLocked(room, $"{participant.Name} saiu da sala.");
+                changed = true;
             }
         }
 
         if (changed)
         {
             RaiseRoomChanged(code);
+            RaiseLobbyChanged();
         }
 
         if (chatChanged)
         {
             RaiseChatChanged(code);
-        }
-
-        if (roomRemoved || changed)
-        {
-            RaiseLobbyChanged();
         }
     }
 
@@ -739,7 +816,7 @@ public sealed class RoomService
                     text,
                     now,
                     isSystem: false,
-                    MaxChatMessages);
+                    MaxStoredMessages);
             }
             catch (Exception ex)
             {
@@ -822,11 +899,11 @@ public sealed class RoomService
         var now = _time.GetUtcNow();
         var changed = false;
         var chatChanged = false;
-        var becameActive = false;
 
         lock (_sync)
         {
-            if (!_rooms.TryGetValue(code, out var room))
+            var room = EnsureRoomLocked(code);
+            if (room is null)
             {
                 return;
             }
@@ -836,6 +913,11 @@ public sealed class RoomService
             {
                 participant.LastSeen = now;
                 participant.NativeMediaActiveUntil = leaseUntil;
+                if (room.EmptySince is not null)
+                {
+                    room.EmptySince = null;
+                    PersistEmptySinceLocked(room);
+                }
                 if (!string.Equals(participant.Name, name, StringComparison.Ordinal))
                 {
                     participant.Name = name;
@@ -869,8 +951,9 @@ public sealed class RoomService
                 }
 
                 room.EmptySince = null;
+                PersistEmptySinceLocked(room);
+                StartVisitLocked(room, room.Participants[guestId]);
                 room.LastActivityAt = now;
-                becameActive = room.Participants.Count == 1;
                 chatChanged = AddSystemMessageLocked(room, $"{name} entrou na sala.");
                 changed = true;
             }
@@ -879,10 +962,6 @@ public sealed class RoomService
         if (changed)
         {
             RaiseRoomChanged(code);
-        }
-
-        if (becameActive)
-        {
             RaiseLobbyChanged();
         }
 
@@ -918,29 +997,24 @@ public sealed class RoomService
                 foreach (var participant in stale)
                 {
                     room.Participants.Remove(participant.Id);
-                }
-
-                if (room.Participants.Count == 0)
-                {
-                    // The last real user disappeared without a clean leave.
-                    // Keep the room briefly for a reload, then PurgeEmptyRooms
-                    // deletes it together with the complete chat history.
-                    room.EmptySince ??= now;
-                    room.LastActivityAt = now;
-                    foreach (var participant in stale)
-                    {
-                        if (AddSystemMessageLocked(room, $"{participant.Name} saiu por inatividade."))
-                        {
-                            chatChangedRooms.Add(room.Id);
-                        }
-                    }
-
-                    lobbyChanged = true;
-                    continue;
+                    EndVisitLocked(room, participant.Id, now);
                 }
 
                 room.LastActivityAt = now;
-                changedRooms.Add(room.Id);
+                if (room.Participants.Count == 0)
+                {
+                    // The last user disappeared without a clean leave. Keep the
+                    // complete room/history for EmptyRoomGrace, then the janitor
+                    // removes it from SQLite.
+                    room.EmptySince ??= now;
+                }
+                else if (room.EmptySince is not null)
+                {
+                    room.EmptySince = null;
+                }
+
+                PersistEmptySinceLocked(room);
+
                 foreach (var participant in stale)
                 {
                     if (AddSystemMessageLocked(room, $"{participant.Name} saiu por inatividade."))
@@ -949,10 +1023,31 @@ public sealed class RoomService
                     }
                 }
 
+                if (room.Participants.Count > 0)
+                {
+                    changedRooms.Add(room.Id);
+                }
+
                 lobbyChanged = true;
             }
 
-            if (PurgeEmptyRoomsLocked(now) > 0)
+            // This also removes persisted rooms that were never loaded into memory.
+            IReadOnlyList<string> expired = [];
+            try
+            {
+                expired = _chatStore.DeleteExpiredEmptyRooms(now - EmptyRoomGrace);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Could not delete expired persisted rooms.");
+            }
+
+            foreach (var roomId in expired)
+            {
+                _rooms.Remove(roomId);
+            }
+
+            if (expired.Count > 0)
             {
                 lobbyChanged = true;
             }
@@ -972,28 +1067,6 @@ public sealed class RoomService
         {
             RaiseLobbyChanged();
         }
-    }
-
-    /// <summary>
-    /// Deletes rooms that have been empty past the reload grace window. A room
-    /// is only persisted while it has users, so this removes its complete chat
-    /// history as well.
-    /// </summary>
-    private int PurgeEmptyRoomsLocked(DateTimeOffset now)
-    {
-        var empty = _rooms.Values
-            .Where(r => r.Participants.Count == 0 &&
-                        now - (r.EmptySince ?? r.CreatedAt) >= EmptyRoomGrace)
-            .Select(r => r.Id)
-            .ToArray();
-
-        foreach (var id in empty)
-        {
-            _rooms.Remove(id);
-            DeletePersistedRoomLocked(id);
-        }
-
-        return empty.Length;
     }
 
     private void RaiseRoomChanged(string roomId)
@@ -1155,7 +1228,7 @@ public sealed class RoomService
         var people = room.Participants.Values
             .OrderBy(p => p.JoinedAt)
             .Take(4)
-            .Select(p => new RoomPersonView(p.Name, p.AvatarTone, p.Speaking))
+            .Select(p => new RoomPersonView(p.Name, p.AvatarTone, false))
             .ToArray();
 
         return new RoomSummaryView(
@@ -1180,7 +1253,7 @@ public sealed class RoomService
                 text,
                 _time.GetUtcNow(),
                 isSystem: true,
-                MaxChatMessages);
+                MaxStoredMessages);
             return true;
         }
         catch (Exception ex)
@@ -1202,18 +1275,6 @@ public sealed class RoomService
         }
     }
 
-    private void DeletePersistedRoomLocked(string roomId)
-    {
-        try
-        {
-            _chatStore.DeleteRoom(roomId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Could not delete the persisted history for room {RoomCode}.", roomId);
-        }
-    }
-
     private string GenerateUniqueRoomCodeLocked()
     {
         for (var attempt = 0; attempt < 64; attempt++)
@@ -1225,7 +1286,7 @@ public sealed class RoomService
             }
 
             var candidate = new string(chars);
-            if (!_rooms.ContainsKey(candidate))
+            if (!_rooms.ContainsKey(candidate) && !_chatStore.RoomExists(candidate))
             {
                 return candidate;
             }

@@ -1,13 +1,14 @@
 namespace Onda.Services;
 
 /// <summary>
-/// Periodically removes presence ghosts when a browser disappears without a clean leave.
+/// Removes stale presence and deletes persisted rooms that have been empty for
+/// longer than the room grace period.
 /// </summary>
 public sealed class RoomJanitor(RoomService rooms, ILogger<RoomJanitor> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(25));
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
         try
         {
             while (await timer.WaitForNextTickAsync(stoppingToken))

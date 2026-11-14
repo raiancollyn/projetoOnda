@@ -618,18 +618,10 @@
         _rooms = Rooms.GetActiveRooms();
         _isLoading = false;
         Rooms.LobbyChanged += HandleLobbyChanged;
-        Rooms.RoomChanged += HandleRoomChanged;
     }
 
     private void HandleLobbyChanged()
     {
-        ScheduleRoomsRefresh();
-    }
-
-    private void HandleRoomChanged(string roomId)
-    {
-        // RoomChanged covers joins, leaves, names and media state. Chat uses a
-        // separate SQLite-backed event and does not change the lobby summary.
         ScheduleRoomsRefresh();
     }
 
@@ -781,6 +773,5 @@
     {
         _disposed = true;
         Rooms.LobbyChanged -= HandleLobbyChanged;
-        Rooms.RoomChanged -= HandleRoomChanged;
     }
 }
