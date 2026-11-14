@@ -77,7 +77,7 @@
                 aria-label="@(IsContain ? "Aproximar imagem" : "Ver imagem inteira")"
                 aria-pressed="@(IsContain ? "true" : "false")"
                 title="@(IsContain ? "Aproximar imagem" : "Ver imagem inteira")"
-                @onclick="ToggleFit">
+                @onclick="ToggleFitAsync">
             <Icon Name="@(IsContain ? "zoom-in" : "zoom-out")" Size="16" />
         </button>
         <button type="button"
@@ -109,14 +109,15 @@
     [Parameter]
     public EventCallback<string> OnFocus { get; set; }
 
-    private bool? _fitOverride;
+    [Parameter]
+    public bool? FitOverride { get; set; }
 
-    private bool IsContain => _fitOverride ?? Participant.ScreenOn;
+    [Parameter]
+    public EventCallback<bool> OnFitChanged { get; set; }
 
-    private void ToggleFit()
-    {
-        _fitOverride = !IsContain;
-    }
+    private bool IsContain => FitOverride ?? Participant.ScreenOn;
+
+    private Task ToggleFitAsync() => OnFitChanged.InvokeAsync(!IsContain);
 
     private string BuildAriaLabel()
     {

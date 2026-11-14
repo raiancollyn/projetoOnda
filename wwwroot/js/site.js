@@ -1866,6 +1866,38 @@
         installPullToRefresh();
     }
 
+    const mediaFitStorageKey = "onda.mediaFit";
+
+    function readMediaFit() {
+        try {
+            const value = localStorage.getItem(mediaFitStorageKey);
+            return value === "contain" || value === "cover" ? value : null;
+        } catch {
+            return null;
+        }
+    }
+
+    function getMediaFit() {
+        return readMediaFit();
+    }
+
+    function setMediaFit(mode) {
+        const value = mode === "cover" ? "cover" : "contain";
+        try {
+            localStorage.setItem(mediaFitStorageKey, value);
+        } catch {
+            // Private mode may block persistence; keep the current session.
+        }
+
+        document.documentElement.dataset.mediaFit = value;
+        return value;
+    }
+
+    const initialMediaFit = readMediaFit();
+    if (initialMediaFit) {
+        document.documentElement.dataset.mediaFit = initialMediaFit;
+    }
+
     function setPipMode(active) {
         const enabled = Boolean(active);
         document.documentElement.classList.toggle("onda-pip", enabled);
@@ -1902,6 +1934,8 @@
         getInstallContext,
         setWakeLock,
         setPipMode,
+        getMediaFit,
+        setMediaFit,
         startPresenceHeartbeat,
         stopPresenceHeartbeat,
         isNativeMobile,

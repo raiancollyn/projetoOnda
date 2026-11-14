@@ -349,6 +349,8 @@ else
                                     <RoomMediaTile Participant="FocusedShare"
                                                     IsSelf="@(FocusedShare.Id == Guest.Id)"
                                                     IsFeatured="true"
+                                                    FitOverride="_mediaFit"
+                                                    OnFitChanged="SetMediaFitAsync"
                                                     OnFocus="FocusShare" />
                                 </div>
                                 <div class="focus-rail" aria-label="Outras transmissões">
@@ -358,7 +360,9 @@ else
                                             <RoomMediaTile Participant="share"
                                                             IsSelf="@(share.Id == Guest.Id)"
                                                             IsThumbnail="true"
-                                                            OnFocus="FocusShare" />
+                                                            FitOverride="_mediaFit"
+                                                    OnFitChanged="SetMediaFitAsync"
+                                                    OnFocus="FocusShare" />
                                         </div>
                                     }
                                     <span class="focus-rail-hint">Clique para trocar o foco</span>
@@ -374,7 +378,9 @@ else
                                         <RoomMediaTile Participant="share"
                                                         IsSelf="@(share.Id == Guest.Id)"
                                                         CanFocus="@(Shares.Count > 1)"
-                                                        OnFocus="FocusShare" />
+                                                        FitOverride="_mediaFit"
+                                                    OnFitChanged="SetMediaFitAsync"
+                                                    OnFocus="FocusShare" />
                                     </div>
                                 }
                             </div>
@@ -1450,6 +1456,7 @@ else
     private bool _screenAudioWarningShown;
 
     private string? _focusedPeerId;
+    private bool? _mediaFit;
     private string? _volumePeerId;
     private bool _panelOpen;
     private bool _showChat;
@@ -1703,6 +1710,23 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender && _mediaFit is null)
+        {
+            try
+            {
+                var savedFit = await JS.InvokeAsync<string?>("onda.getMediaFit");
+                if (savedFit is "contain" or "cover")
+                {
+                    _mediaFit = savedFit == "contain";
+                    StateHasChanged();
+                }
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException)
+            {
+                // No saved preference; keep the per-content default.
+            }
+        }
+
         if (!_handoffUrlCleared && !string.IsNullOrWhiteSpace(Handoff))
         {
             _handoffUrlCleared = true;
@@ -2908,6 +2932,24 @@ else
     }
 
     private void ClearFocus() => _focusedPeerId = null;
+
+    private async Task SetMediaFitAsync(bool contain)
+    {
+        if (_mediaFit == contain)
+        {
+            return;
+        }
+
+        _mediaFit = contain;
+        try
+        {
+            await JS.InvokeVoidAsync("onda.setMediaFit", contain ? "contain" : "cover");
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException)
+        {
+            // The preference still applies to the current session.
+        }
+    }
 
     private async Task ToggleRoomFullscreenAsync()
     {
