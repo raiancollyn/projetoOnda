@@ -715,3 +715,159 @@ html[data-theme="dark"] .onda-pull-refresh {
     background: #11231e;
     color: var(--ink-soft);
 }
+
+/* ---------- Picture-in-picture (app Android) ---------- */
+
+.pip-audio-layer {
+    display: none;
+}
+
+html.onda-pip,
+html.onda-pip body {
+    background: #000;
+    overflow: hidden;
+}
+
+html.onda-pip .room-header,
+html.onda-pip .room-panel,
+html.onda-pip .panel-scrim,
+html.onda-pip .dock,
+html.onda-pip .stage-toolbar,
+html.onda-pip .stage-banner,
+html.onda-pip .people-view,
+html.onda-pip .media-topline,
+html.onda-pip .media-caption,
+html.onda-pip .media-fit-button,
+html.onda-pip .media-fullscreen-button,
+html.onda-pip .site-header,
+html.onda-pip .room-loading-page,
+html.onda-pip .boot-screen,
+html.onda-pip .session-expired-layer {
+    display: none !important;
+}
+
+html.onda-pip .room-app {
+    display: block;
+    height: 100vh;
+    min-height: 0;
+    background: #000;
+}
+
+html.onda-pip .room-main,
+html.onda-pip .stage-shell,
+html.onda-pip .stage-area {
+    display: block;
+    width: 100%;
+    height: 100vh;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent !important;
+}
+
+html.onda-pip .stage-shell,
+html.onda-pip .stage-area {
+    position: relative;
+    z-index: 1;
+}
+
+html.onda-pip .media-grid,
+html.onda-pip .media-grid-item {
+    display: block;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent !important;
+}
+
+html.onda-pip .media-grid-item:not(:has(.media-tile-shell.is-pip-speaker)) {
+    display: none !important;
+}
+
+html.onda-pip .media-tile-shell {
+    display: none;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+}
+
+html.onda-pip .media-tile-shell.is-pip-speaker {
+    display: block;
+}
+
+html.onda-pip .media-tile {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+}
+
+html.onda-pip .media-tile video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain !important;
+}
+
+html.onda-pip .pip-audio-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+        radial-gradient(circle at 50% 35%, rgba(205, 242, 124, 0.11), transparent 45%),
+        #06100d;
+}
+
+html.onda-pip .pip-audio-card {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.7rem;
+    color: var(--cream);
+    text-align: center;
+}
+
+html.onda-pip .pip-audio-card.is-pip-speaker {
+    display: flex;
+}
+
+html.onda-pip .pip-audio-card strong {
+    max-width: 80vw;
+    overflow: hidden;
+    color: var(--cream);
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+html.onda-pip .pip-audio-card span {
+    color: var(--lime);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+html.onda-pip .spotlight-layout {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+html.onda-pip .spotlight-feature {
+    width: 100%;
+    height: 100%;
+}
+
+html.onda-pip .spotlight-strip {
+    display: none;
+}

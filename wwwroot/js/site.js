@@ -1701,8 +1701,7 @@
         presenceHeartbeatGuest = null;
     }
 
-    function startPresenceHeartbeat(roomId, guestId) {
-        stopPresenceHeartbeat();
+    function startPresenceHeartbeat(roomId, guestId) {        stopPresenceHeartbeat();
         if (!roomId || !guestId) {
             return;
         }
@@ -1867,6 +1866,22 @@
         installPullToRefresh();
     }
 
+    function setPipMode(active) {
+        const enabled = Boolean(active);
+        document.documentElement.classList.toggle("onda-pip", enabled);
+
+        if (!enabled) {
+            return;
+        }
+
+        if (!document.querySelector(".is-pip-speaker")) {
+            const fallbackTile = document.querySelector(".media-tile-shell");
+            fallbackTile?.classList.add("is-pip-speaker");
+            const fallbackCard = document.querySelector(".pip-audio-card");
+            fallbackCard?.classList.add("is-pip-speaker");
+        }
+    }
+
     window.onda = Object.freeze({
         copyText,
         scrollToBottom,
@@ -1886,6 +1901,7 @@
         isStandalonePwa,
         getInstallContext,
         setWakeLock,
+        setPipMode,
         startPresenceHeartbeat,
         stopPresenceHeartbeat,
         isNativeMobile,

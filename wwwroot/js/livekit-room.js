@@ -52,6 +52,8 @@ let visibilityHandler = null;
 let pageHideHandler = null;
 let gestureHandler = null;
 let viewerVisibilityHandler = null;
+let pipObserver = null;
+let lastPipPeerId = null;
 let micAcquirePromise = null;
 let cameraBusy = false;
 let screenBusy = false;
@@ -273,6 +275,8 @@ function bindRoomEvents(activeRoom) {
     activeRoom.on(RoomEvent.TrackSubscribed, handleTrackSubscribed);
     activeRoom.on(RoomEvent.TrackUnsubscribed, handleTrackUnsubscribed);
     activeRoom.on(RoomEvent.ParticipantDisconnected, handleParticipantDisconnected);
+    activeRoom.on(RoomEvent.ActiveSpeakersChanged, handleActiveSpeakersChanged);
+    ensurePipObserver();
     activeRoom.on(RoomEvent.AudioPlaybackStatusChanged, () => {
         if (!initialized || !room) {
             return;
@@ -308,6 +312,12 @@ export async function disposeRoom() {
     removePageLifecycle();
     removeGestureUnlock();
     stopSpeakingMonitor(false);
+
+    if (pipObserver) {
+        pipObserver.disconnect();
+        pipObserver = null;
+    }
+    lastPipPeerId = null;
 
     for (const key of Array.from(remoteAudios.keys())) {
         removeRemoteAudio(key);
@@ -1465,6 +1475,55 @@ function handleTrackUnsubscribed(track, publication, participant) {
         const channel = publication?.source === Track.Source.ScreenShareAudio ? "screen" : "voice";
         removeRemoteAudio(`${identity}:${channel}`, track);
     }
+}
+
+function handleActiveSpeakersChanged(speakers) {
+    const primary = (speakers || [])
+        .map((speaker) => speaker?.identity)
+        .find((identity) => typeof identity === "string" && identity.length > 0);
+
+    if (!primary) {
+        return;
+    }
+
+    const peerId = primary.endsWith("-viewer")
+        ? primary.slice(0, -"-viewer".length)
+        : primary;
+
+    setPipSpeaker(peerId);
+}
+
+function setPipSpeaker(peerId) {
+    if (!peerId) {
+        return;
+    }
+
+    lastPipPeerId = peerId;
+    ensurePipObserver();
+
+    document.querySelectorAll(".media-tile video[data-peer-id]").forEach((video) => {
+        const shell = video.closest(".media-tile-shell");
+        if (shell) {
+            shell.classList.toggle("is-pip-speaker", video.dataset.peerId === peerId);
+        }
+    });
+
+    document.querySelectorAll(".pip-audio-card[data-peer-id]").forEach((card) => {
+        card.classList.toggle("is-pip-speaker", card.dataset.peerId === peerId);
+    });
+}
+
+function ensurePipObserver() {
+    if (pipObserver || !document.body) {
+        return;
+    }
+
+    pipObserver = new MutationObserver(() => {
+        if (lastPipPeerId) {
+            setPipSpeaker(lastPipPeerId);
+        }
+    });
+    pipObserver.observe(document.body, { childList: true, subtree: true });
 }
 
 function handleParticipantDisconnected(participant) {
