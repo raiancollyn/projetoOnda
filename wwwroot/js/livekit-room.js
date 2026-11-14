@@ -54,6 +54,9 @@ let gestureHandler = null;
 let viewerVisibilityHandler = null;
 let pipObserver = null;
 let lastPipPeerId = null;
+let pendingPipPeerId = null;
+let pipSwitchTimer = null;
+let lastPipSwitchAt = 0;
 let micAcquirePromise = null;
 let cameraBusy = false;
 let screenBusy = false;
@@ -318,6 +321,12 @@ export async function disposeRoom() {
         pipObserver = null;
     }
     lastPipPeerId = null;
+    pendingPipPeerId = null;
+    if (pipSwitchTimer) {
+        clearTimeout(pipSwitchTimer);
+        pipSwitchTimer = null;
+    }
+    lastPipSwitchAt = 0;
 
     for (const key of Array.from(remoteAudios.keys())) {
         removeRemoteAudio(key);
@@ -1483,6 +1492,11 @@ function handleActiveSpeakersChanged(speakers) {
         .find((identity) => typeof identity === "string" && identity.length > 0);
 
     if (!primary) {
+        pendingPipPeerId = null;
+        if (pipSwitchTimer) {
+            clearTimeout(pipSwitchTimer);
+            pipSwitchTimer = null;
+        }
         return;
     }
 
@@ -1490,7 +1504,50 @@ function handleActiveSpeakersChanged(speakers) {
         ? primary.slice(0, -"-viewer".length)
         : primary;
 
-    setPipSpeaker(peerId);
+    schedulePipSpeaker(peerId);
+}
+
+function schedulePipSpeaker(peerId) {
+    if (!peerId) {
+        return;
+    }
+
+    if (peerId === lastPipPeerId) {
+        pendingPipPeerId = null;
+        if (pipSwitchTimer) {
+            clearTimeout(pipSwitchTimer);
+            pipSwitchTimer = null;
+        }
+        return;
+    }
+
+    if (peerId === pendingPipPeerId) {
+        return;
+    }
+
+    pendingPipPeerId = peerId;
+    if (pipSwitchTimer) {
+        clearTimeout(pipSwitchTimer);
+        pipSwitchTimer = null;
+    }
+
+    const applySpeaker = () => {
+        const nextPeerId = pendingPipPeerId;
+        pendingPipPeerId = null;
+        pipSwitchTimer = null;
+        if (nextPeerId) {
+            setPipSpeaker(nextPeerId);
+            lastPipSwitchAt = performance.now();
+        }
+    };
+
+    const elapsed = performance.now() - lastPipSwitchAt;
+    if (elapsed >= 1000 || !lastPipPeerId) {
+        applySpeaker();
+        return;
+    }
+
+    pipSwitchTimer = setTimeout(applySpeaker, 1000 - elapsed);
 }
 
 function setPipSpeaker(peerId) {
