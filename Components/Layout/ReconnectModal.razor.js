@@ -8,6 +8,16 @@ retryButton.addEventListener("click", retry);
 const resumeButton = document.getElementById("components-resume-button");
 resumeButton.addEventListener("click", resume);
 
+function reloadWithoutExitGuard() {
+    try {
+        window.onda?.setRoomExitGuard?.(false);
+    } catch {
+        // The Onda script may not be available on this page.
+    }
+
+    location.reload();
+}
+
 function handleReconnectStateChanged(event) {
     if (event.detail.state === "show") {
         reconnectModal.showModal();
@@ -16,7 +26,7 @@ function handleReconnectStateChanged(event) {
     } else if (event.detail.state === "failed") {
         document.addEventListener("visibilitychange", retryWhenDocumentBecomesVisible);
     } else if (event.detail.state === "rejected") {
-        location.reload();
+        reloadWithoutExitGuard();
     }
 }
 
@@ -34,7 +44,7 @@ async function retry() {
             // We'll reload the page so the user can continue using the app as quickly as possible.
             const resumeSuccessful = await Blazor.resumeCircuit();
             if (!resumeSuccessful) {
-                location.reload();
+                reloadWithoutExitGuard();
             } else {
                 reconnectModal.close();
             }
@@ -49,7 +59,7 @@ async function resume() {
     try {
         const successful = await Blazor.resumeCircuit();
         if (!successful) {
-            location.reload();
+            reloadWithoutExitGuard();
         }
     } catch {
         reconnectModal.classList.replace("components-reconnect-paused", "components-reconnect-resume-failed");

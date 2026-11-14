@@ -1591,7 +1591,9 @@
             } catch {
                 // The guard still works through beforeunload.
             }
-            window.addEventListener("beforeunload", handleBeforeUnload);
+            if (!isNativeMobile()) {
+                window.addEventListener("beforeunload", handleBeforeUnload);
+            }
             window.addEventListener("popstate", handleExitPopState);
             return;
         }
