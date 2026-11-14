@@ -811,7 +811,6 @@ html.onda-pip .media-tile {
 html.onda-pip .media-tile video {
     width: 100%;
     height: 100%;
-    object-fit: contain !important;
 }
 
 html.onda-pip .pip-audio-layer {
@@ -830,7 +829,10 @@ html.onda-pip .pip-audio-card {
     display: none;
     flex-direction: column;
     align-items: center;
-    gap: 0.7rem;
+    gap: 0.45rem;
+    max-width: 90%;
+    max-height: 90%;
+    overflow: hidden;
     color: var(--cream);
     text-align: center;
 }
@@ -844,7 +846,7 @@ html.onda-pip .pip-audio-card strong {
     overflow: hidden;
     color: var(--cream);
     font-family: var(--font-display);
-    font-size: 1.25rem;
+    font-size: clamp(1rem, 7vh, 1.25rem);
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -869,5 +871,9 @@ html.onda-pip .spotlight-feature {
 }
 
 html.onda-pip .spotlight-strip {
+    display: none;
+}
+
+html.onda-pip .media-placeholder span {
     display: none;
 }

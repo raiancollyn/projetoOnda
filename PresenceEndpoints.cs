@@ -20,6 +20,11 @@ public static class PresenceEndpoints
         bool ScreenOn,
         bool ScreenWithAudio);
 
+    public sealed record SpeakingPing(
+        string RoomId,
+        string GuestId,
+        bool Speaking);
+
     public static IEndpointRouteBuilder MapPresenceEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapPost("/api/presence/heartbeat", (PresencePing? ping, RoomService rooms) =>
@@ -64,6 +69,19 @@ public static class PresenceEndpoints
                 ping.CameraOn,
                 ping.ScreenOn,
                 ping.ScreenWithAudio);
+            return Results.NoContent();
+        });
+
+        endpoints.MapPost("/api/presence/speaking", (SpeakingPing? ping, RoomService rooms) =>
+        {
+            if (ping is null ||
+                string.IsNullOrWhiteSpace(ping.RoomId) ||
+                string.IsNullOrWhiteSpace(ping.GuestId))
+            {
+                return Results.BadRequest();
+            }
+
+            rooms.UpdateSpeaking(ping.RoomId, ping.GuestId, ping.Speaking);
             return Results.NoContent();
         });
 

@@ -819,9 +819,8 @@ else
             @foreach (var person in _room.Participants)
             {
                 <div class="pip-audio-card" data-peer-id="@person.Id">
-                    <Avatar Name="@person.Name" Tone="@person.ColorIndex" Size="104" Speaking="@person.Speaking" />
+                    <Avatar Name="@person.Name" Tone="@person.ColorIndex" Size="64" Speaking="@person.Speaking" />
                     <strong>@person.Name</strong>
-                    <span>@(person.Speaking ? "Falando agora" : "Na chamada")</span>
                 </div>
             }
         </div>
