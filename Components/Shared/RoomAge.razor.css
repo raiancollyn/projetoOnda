@@ -16,6 +16,16 @@
 .room-timer-badge .onda-icon {
     color: rgba(205, 242, 124, 0.72);
 }
+
+html[data-theme="light"] .room-timer-badge {
+    border-color: rgba(21, 35, 31, 0.14);
+    background: rgba(255, 255, 255, 0.28);
+    color: var(--ink-soft);
+}
+
+html[data-theme="light"] .room-timer-badge .onda-icon {
+    color: #3f6f5e;
+}
 @media (max-width: 720px) {
     .room-timer-badge {
         padding: 0.24rem 0.42rem;
