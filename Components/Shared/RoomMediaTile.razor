@@ -24,10 +24,20 @@
                playsinline
                muted></video>
 
+        @if (Participant.ScreenOn && Participant.CameraOn)
+        {
+            <video class="media-camera-overlay"
+                   data-peer-id="@Participant.Id"
+                   data-media-kind="camera"
+                   autoplay
+                   playsinline
+                   muted></video>
+        }
+
         <span class="media-topline">
             <span class="media-kind">
                 <Icon Name="@(Participant.ScreenOn ? "screen" : "camera")" Size="@(IsThumbnail ? 11 : 13)" />
-                <span>@(Participant.ScreenOn ? "Tela" : "Câmera")</span>
+                <span>@(Participant.ScreenOn && Participant.CameraOn ? "Tela + câmera" : Participant.ScreenOn ? "Tela" : "Câmera")</span>
             </span>
             @if (!IsThumbnail && CanFocus)
             {
@@ -46,7 +56,9 @@
                 {
                     <span>
                         @(Participant.ScreenOn
-                            ? (Participant.ScreenWithAudio ? "compartilhando a tela · com áudio" : "compartilhando a tela")
+                            ? (Participant.CameraOn
+                                ? "compartilhando a tela e a câmera"
+                                : Participant.ScreenWithAudio ? "compartilhando a tela · com áudio" : "compartilhando a tela")
                             : "câmera ligada")
                     </span>
                 }

@@ -726,12 +726,6 @@ public sealed class RoomService
                 return;
             }
 
-            // A user shares one video source at a time (camera or screen).
-            if (cameraOn && screenOn)
-            {
-                cameraOn = false;
-            }
-
             changed =
                 participant.MicOn != micOn ||
                 participant.CameraOn != cameraOn ||

@@ -1475,10 +1475,6 @@ async function startCameraWithOptions(videoOptions = {}) {
             return false;
         }
 
-        if (local.screenOn) {
-            await stopScreenSession(false);
-        }
-
         await stopCameraSession(false);
         track.mediaStreamTrack.contentHint = "motion";
         track.mediaStreamTrack.addEventListener("ended", handleCameraEnded, { once: true });
@@ -1747,9 +1743,6 @@ export async function toggleScreenShare() {
         videoTrack.mediaStreamTrack.contentHint =
             quality.contentMode === "motion" ? "motion" : "detail";
 
-        if (local.cameraOn) {
-            await stopCameraSession(false);
-        }
         await stopScreenSession(false);
 
         const published = await publishScreenTracks(videoTrack, audioTrack);
@@ -1894,7 +1887,9 @@ function handleTrackSubscribed(track, publication, participant) {
     const identity = participant.identity;
 
     if (track.kind === "video") {
-        const existing = remoteVideos.get(identity);
+        const kind = publication?.source === Track.Source.ScreenShare ? "screen" : "camera";
+        const key = `${identity}:${kind}`;
+        const existing = remoteVideos.get(key);
         if (existing?.track && existing.track !== track) {
             detachRemoteVideo(existing.track);
         }
@@ -1909,7 +1904,7 @@ function handleTrackSubscribed(track, publication, participant) {
             }
         }
 
-        remoteVideos.set(identity, {
+        remoteVideos.set(key, {
             track,
             source: publication?.source || Track.Source.Camera
         });
@@ -1938,9 +1933,11 @@ function handleTrackUnsubscribed(track, publication, participant) {
     const identity = participant.identity;
 
     if (track.kind === "video") {
-        const existing = remoteVideos.get(identity);
+        const kind = publication?.source === Track.Source.ScreenShare ? "screen" : "camera";
+        const key = `${identity}:${kind}`;
+        const existing = remoteVideos.get(key);
         if (existing?.track === track) {
-            remoteVideos.delete(identity);
+            remoteVideos.delete(key);
             detachRemoteVideo(track);
             syncMediaElements();
         }
@@ -2056,10 +2053,15 @@ function handleParticipantDisconnected(participant) {
     }
 
     const identity = participant.identity;
-    const video = remoteVideos.get(identity);
+    const video = remoteVideos.get(`${identity}:camera`);
     if (video) {
-        remoteVideos.delete(identity);
+        remoteVideos.delete(`${identity}:camera`);
         detachRemoteVideo(video.track);
+    }
+    const screenVideo = remoteVideos.get(`${identity}:screen`);
+    if (screenVideo) {
+        remoteVideos.delete(`${identity}:screen`);
+        detachRemoteVideo(screenVideo.track);
     }
 
     removeRemoteAudio(`${identity}:voice`);
@@ -2164,10 +2166,13 @@ export function syncMediaElements(force = false) {
         }
 
         let targetTrack = null;
+        const mediaKind = video.dataset.mediaKind || "camera";
         if (peerId === selfId) {
-            targetTrack = local.presentationTrack;
+            targetTrack = mediaKind === "screen"
+                ? local.screenVideoTrack
+                : local.cameraTrack;
         } else {
-            targetTrack = remoteVideos.get(peerId)?.track || null;
+            targetTrack = remoteVideos.get(`${peerId}:${mediaKind}`)?.track || null;
         }
 
         const previousTrack = video.__ondaLiveKitTrack || null;

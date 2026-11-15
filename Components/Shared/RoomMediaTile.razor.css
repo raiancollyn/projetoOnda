@@ -62,6 +62,22 @@
     transform: scaleX(-1);
 }
 
+.media-tile video.media-camera-overlay {
+    inset: auto 0.65rem 3.35rem auto;
+    z-index: 2;
+    width: min(30%, 160px);
+    height: auto;
+    aspect-ratio: 16 / 9;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0.65rem;
+    object-fit: cover;
+    box-shadow: 0 8px 24px rgba(2, 11, 8, 0.42);
+}
+
+.media-tile.is-self video.media-camera-overlay {
+    transform: scaleX(-1);
+}
+
 .media-placeholder {
     position: absolute;
     inset: 0;

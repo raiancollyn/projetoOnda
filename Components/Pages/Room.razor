@@ -400,6 +400,17 @@ else
                                         <Icon Name="grid" Size="14" /> Ver grade
                                     </button>
                                 }
+                                @if (!_nativeMedia)
+                                {
+                                    <button type="button"
+                                            class="stage-grid-button"
+                                            aria-label="Abrir vídeo em picture-in-picture"
+                                            title="Picture-in-picture"
+                                            @onclick="TogglePipAsync">
+                                        <Icon Name="pip" Size="14" />
+                                        <span class="stage-button-label">PiP</span>
+                                    </button>
+                                }
                                 @if (_localScreenOn && !_nativeMedia)
                                 {
                                     <button type="button"
@@ -3511,6 +3522,25 @@ else
         catch (Exception ex) when (ex is JSException or JSDisconnectedException)
         {
             Toasts.Show("Não foi possível ativar o áudio. Tente novamente.", ToastKind.Error);
+        }
+    }
+
+    private async Task TogglePipAsync()
+    {
+        try
+        {
+            var opened = await JS.InvokeAsync<bool>("onda.toggleVideoPip");
+            if (!opened)
+            {
+                Toasts.Show(
+                    "O picture-in-picture não está disponível neste navegador ou não há vídeo ativo.",
+                    ToastKind.Info,
+                    6000);
+            }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            Toasts.Show("Não foi possível abrir o picture-in-picture.", ToastKind.Error);
         }
     }
 

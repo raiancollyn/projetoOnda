@@ -2186,6 +2186,36 @@
         document.documentElement.dataset.mediaFit = initialMediaFit;
     }
 
+    async function toggleVideoPip() {
+        try {
+            if (document.pictureInPictureElement) {
+                await document.exitPictureInPicture();
+                return true;
+            }
+
+            if (!document.pictureInPictureEnabled) {
+                return false;
+            }
+
+            const videos = Array.from(document.querySelectorAll(".stage-area video[data-peer-id]"))
+                .filter((video) => video.__ondaLiveKitTrack &&
+                    video.videoWidth > 0 &&
+                    !video.disablePictureInPicture);
+            const video = videos.find((candidate) => candidate.closest(".media-tile.is-featured")) ||
+                videos.find((candidate) => candidate.dataset.mediaKind === "screen") ||
+                videos[0];
+
+            if (!video || typeof video.requestPictureInPicture !== "function") {
+                return false;
+            }
+
+            await video.requestPictureInPicture();
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
     function setPipMode(active) {
         const enabled = Boolean(active);
         document.documentElement.classList.toggle("onda-pip", enabled);
@@ -2480,6 +2510,7 @@
         getInstallContext,
         setWakeLock,
         setPipMode,
+        toggleVideoPip,
         getMediaFit,
         setMediaFit,
         startPresenceHeartbeat,
