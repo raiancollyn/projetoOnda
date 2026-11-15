@@ -616,6 +616,11 @@ else
                             <span class="dock-control-label">@(_localMicOn ? "Mic" : "Mudo")</span>
                         </button>
 
+                        @if (_localCameraOn && (_nativeMedia || _cameraDevices.Count > 1 || _cameraTorchSupported))
+                        {
+                            <span class="dock-divider dock-camera-divider" aria-hidden="true"></span>
+                        }
+
                         <button type="button"
                                 class="dock-control @(_localCameraOn ? "is-on" : "is-off")"
                                 @onclick="ToggleCameraAsync"
