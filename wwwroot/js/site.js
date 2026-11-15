@@ -465,6 +465,21 @@
             }
         }
 
+        if (window.ondaDesktop?.shareLink) {
+            try {
+                const result = await window.ondaDesktop.shareLink(data);
+                if (result?.cancelled) {
+                    return "cancelled";
+                }
+                if (result?.ok) {
+                    return "shared";
+                }
+                return result?.reason === "unsupported" ? "unsupported" : "failed";
+            } catch {
+                return "failed";
+            }
+        }
+
         if (typeof navigator.share === "function") {
             try {
                 await navigator.share(data);
