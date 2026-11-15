@@ -23,6 +23,7 @@ fi
 
 ./livekit-server "${args[@]}" &
 pid=$!
+echo "Onda LiveKit: processo iniciado"
 forwarded=0
 
 shutdown() {

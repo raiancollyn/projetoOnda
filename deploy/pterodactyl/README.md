@@ -224,17 +224,52 @@ O log `livekit_1.13.11_linux_arm64.tar.gz` mostra que a detecção funcionou. Se
 
 Era causado por passar o **mesmo valor** para `--rtc.port_range_start` e `--rtc.port_range_end` com `use_external_ip=true`. O LiveKit tenta sortear uma porta dentro de um range de tamanho zero e entra em panic.
 
-O egg agora usa `--udp-port` com uma única porta:
+O egg agora usa `--udp-port` com uma única porta. O comando fica dentro do wrapper:
 
 ```bash
 /home/container/livekit-server \
   --bind 0.0.0.0 \
-  --port ${SERVER_PORT} \
-  --rtc.tcp_port ${RTC_TCP_PORT} \
-  --udp-port ${RTC_UDP_PORT}
+  --port "$SERVER_PORT" \
+  --rtc.tcp_port "$RTC_TCP_PORT" \
+  --udp-port "$RTC_UDP_PORT"
 ```
 
-Se o servidor já foi criado com o startup antigo, edite o **Startup Command** do servidor no Pterodactyl e troque os dois parâmetros de range por `--udp-port ${RTC_UDP_PORT}`. Não é necessário recriar o servidor.
+Se o servidor já foi criado com o startup antigo, edite o **Startup Command** do servidor no Pterodactyl e use:
+
+```text
+/bin/bash /home/container/livekit-start.sh
+```
+
+Não use `${SERVER_PORT}` diretamente no campo **Startup Command**. O Pterodactyl substitui apenas a sintaxe `{{SERVER_PORT}}`; `${...}` fica literal e o LiveKit recebe uma porta inválida.
+
+## Fica em “ligando” e não inicia
+
+Confira o **Startup Command** do servidor no painel. Se estiver assim, está errado:
+
+```text
+/home/container/livekit-server ... --port ${SERVER_PORT}
+```
+
+O terminal mostra os `${...}` literalmente e o processo não chega a registrar o início.
+
+Use:
+
+```text
+/bin/bash /home/container/livekit-start.sh
+```
+
+Se o arquivo não existir:
+
+1. importe o egg atualizado;
+2. rode **Reinstall Server**;
+3. edite o **Startup Command** para o comando acima;
+4. inicie novamente.
+
+O egg também aceita o comando direto abaixo, mas ele não tem a proteção de desligamento do wrapper:
+
+```text
+/home/container/livekit-server --bind 0.0.0.0 --port {{SERVER_PORT}} --rtc.tcp_port {{RTC_TCP_PORT}} --udp-port {{RTC_UDP_PORT}}
+```
 
 ## Se o import retornar 500
 
