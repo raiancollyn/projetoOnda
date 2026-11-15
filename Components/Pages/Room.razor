@@ -1196,7 +1196,7 @@ else
                     <Icon Name="sparkles" Size="17" />
                     <span>
                         <strong>Krisp (experimental)</strong>
-                        <small>Cancelamento avançado no navegador e no app desktop. Baixa o modelo na primeira ativação.</small>
+                        <small>Cancelamento avançado no navegador e no app desktop. Requer autenticação do LiveKit Cloud.</small>
                     </span>
                 </span>
                 <input type="checkbox"
@@ -4469,10 +4469,22 @@ else
             if (!applied)
             {
                 _krispNoiseEnabled = false;
+                var error = string.Empty;
+                try
+                {
+                    error = await _jsModule.InvokeAsync<string>("getKrispLastError");
+                }
+                catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+                {
+                    // Keep the generic message.
+                }
+
                 Toasts.Show(
-                    "O Krisp não está disponível neste navegador ou não conseguiu carregar o modelo.",
+                    error.Contains("authenticate", StringComparison.OrdinalIgnoreCase)
+                        ? "O Krisp exige autenticação do LiveKit Cloud. O servidor de mídia atual não oferece esse endpoint."
+                        : "O Krisp não está disponível neste navegador ou não conseguiu carregar o modelo.",
                     ToastKind.Error,
-                    7000);
+                    8000);
             }
         }
         catch (Exception ex) when (ex is JSException or JSDisconnectedException)

@@ -82,6 +82,8 @@ let krispEnabled = storedAudioPreferences.krispEnabled;
 let krispQuality = storedAudioPreferences.krispQuality;
 let krispModulePromise = null;
 let krispProcessor = null;
+let krispTrack = null;
+let krispLastError = "";
 
 function readAudioPreferences() {
     const fallback = {
@@ -355,6 +357,16 @@ function bindRoomEvents(activeRoom) {
     activeRoom.on(RoomEvent.TrackUnsubscribed, handleTrackUnsubscribed);
     activeRoom.on(RoomEvent.ParticipantDisconnected, handleParticipantDisconnected);
     activeRoom.on(RoomEvent.ActiveSpeakersChanged, handleActiveSpeakersChanged);
+    activeRoom.on(RoomEvent.LocalTrackPublished, (publication) => {
+        if (!initialized ||
+            !krispEnabled ||
+            publication.source !== Track.Source.Microphone ||
+            local.micTrack !== publication.track) {
+            return;
+        }
+
+        void attachKrispToTrack(local.micTrack);
+    });
     ensurePipObserver();
     activeRoom.on(RoomEvent.AudioPlaybackStatusChanged, () => {
         if (!initialized || !room) {
@@ -761,6 +773,15 @@ async function attachKrispToTrack(track) {
         return true;
     }
 
+    if (krispTrack === track && krispProcessor) {
+        return true;
+    }
+
+    if (!track.sender) {
+        // LocalTrackPublished will retry once the sender is available.
+        return true;
+    }
+
     try {
         const { KrispNoiseFilter, isKrispNoiseFilterSupported } = await loadKrispModule();
         if (!isKrispNoiseFilterSupported()) {
@@ -769,15 +790,23 @@ async function attachKrispToTrack(track) {
 
         const processor = KrispNoiseFilter({ quality: krispQuality });
         await track.setProcessor(processor);
+        await processor.setEnabled(true);
         krispProcessor = processor;
+        krispTrack = track;
         return true;
     } catch (error) {
+        krispLastError = String(error?.message || error || "");
         console.warn("Onda: Krisp noise filter could not be enabled", error);
         krispEnabled = false;
         krispProcessor = null;
+        krispTrack = null;
         persistAudioPreferences();
         return false;
     }
+}
+
+export function getKrispLastError() {
+    return krispLastError;
 }
 
 export async function setKrispQuality(quality) {
@@ -799,6 +828,7 @@ export async function setKrispQuality(quality) {
         console.warn("Onda: could not restart Krisp for quality change", error);
     }
     krispProcessor = null;
+    krispTrack = null;
     return attachKrispToTrack(local.micTrack);
 }
 
@@ -817,6 +847,7 @@ export async function setKrispEnabled(enabled) {
             console.warn("Onda: could not stop Krisp processor", error);
         }
         krispProcessor = null;
+        krispTrack = null;
         return true;
     }
 
@@ -971,7 +1002,6 @@ async function acquireMicrophone(enable) {    if (!initialized || !room) {
                 dtx: true,
                 red: true
             });
-            await attachKrispToTrack(track);
 
             await setMicrophoneEnabled(enable !== false, false);
             notifyMediaState();
@@ -1107,6 +1137,9 @@ export async function switchAudioInput(deviceId, force = false) {
         }
 
         nextTrack.mediaStreamTrack.addEventListener("ended", handleMicrophoneEnded, { once: true });
+        local.micTrack = nextTrack;
+        local.hasMic = true;
+        applyInputVolumeToTrack(nextTrack);
         await room.localParticipant.publishTrack(nextTrack, {
             source: Track.Source.Microphone,
             name: "microphone",
@@ -1114,10 +1147,6 @@ export async function switchAudioInput(deviceId, force = false) {
             red: true
         });
 
-        local.micTrack = nextTrack;
-        local.hasMic = true;
-        applyInputVolumeToTrack(nextTrack);
-        await attachKrispToTrack(nextTrack);
         await setMicrophoneEnabled(wasOn, false);
 
         if (oldTrack) {
@@ -1134,6 +1163,13 @@ export async function switchAudioInput(deviceId, force = false) {
         if (local.micInput && local.micInput !== oldInput) {
             disposeMicInput();
         }
+        if (local.micTrack && local.micTrack !== oldTrack) {
+            stopLocalTrack(local.micTrack);
+        }
+        local.micTrack = oldTrack;
+        local.hasMic = Boolean(oldTrack);
+        krispProcessor = null;
+        krispTrack = null;
         local.micInput = oldInput;
         inputDeviceId = "";
         persistAudioPreferences();
