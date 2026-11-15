@@ -2184,6 +2184,14 @@
 
     let pipSession = null;
     let pipTarget = null;
+    let documentPipSession = null;
+    let desktopPipSession = null;
+
+    function supportsDesktopPip() {
+        return Boolean(window.ondaDesktop?.openPip &&
+            window.ondaDesktop?.sendPipFrame &&
+            window.ondaDesktop?.closePip);
+    }
 
     function normalizePipTarget(target) {
         if (!target || typeof target !== "object" || !target.id) {
@@ -2277,6 +2285,14 @@
         context.arc(centerX, centerY, radius, 0, Math.PI * 2);
         context.fillStyle = tone;
         context.fill();
+
+        if (target.speaking) {
+            context.beginPath();
+            context.arc(centerX, centerY, radius + 7, 0, Math.PI * 2);
+            context.strokeStyle = "rgba(205, 242, 124, 0.78)";
+            context.lineWidth = 3;
+            context.stroke();
+        }
 
         context.fillStyle = "#10231d";
         context.font = `700 ${Math.round(radius * 0.72)}px "DM Sans", "Segoe UI", sans-serif`;
@@ -2485,8 +2501,425 @@
         return true;
     }
 
+    function supportsDocumentPip() {
+        return Boolean(window.documentPictureInPicture?.requestWindow);
+    }
+
+    function stopDocumentPip() {
+        const session = documentPipSession;
+        documentPipSession = null;
+        if (!session) {
+            return;
+        }
+
+        window.clearInterval(session.timer);
+        try {
+            session.video.srcObject = null;
+        } catch {
+            // A janela já pode ter sido destruída.
+        }
+    }
+
+    function stopDesktopPip(closeWindow = false) {
+        const session = desktopPipSession;
+        desktopPipSession = null;
+        if (!session) {
+            return;
+        }
+
+        window.clearInterval(session.timer);
+        session.unsubscribe?.();
+        if (closeWindow) {
+            try {
+                window.ondaDesktop?.closePip?.();
+            } catch {
+                // A janela já pode ter sido fechada.
+            }
+        }
+    }
+
+    async function startDesktopPip(target) {
+        if (!supportsDesktopPip() || !target) {
+            return false;
+        }
+
+        const opened = await window.ondaDesktop.openPip({ width: 480, height: 300 });
+        if (!opened) {
+            return false;
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = 640;
+        canvas.height = 360;
+
+        const session = {
+            canvas,
+            target,
+            follow: target.follow,
+            selfId: target.selfId,
+            lastRotation: 0,
+            timer: 0,
+            unsubscribe: null
+        };
+        desktopPipSession = session;
+        pipTarget = target;
+
+        session.unsubscribe = window.ondaDesktop.onPipClosed?.(() => {
+            if (desktopPipSession === session) {
+                stopDesktopPip(false);
+            }
+        });
+
+        const paint = () => {
+            if (desktopPipSession !== session) {
+                return;
+            }
+
+            drawPipFrame(session);
+            try {
+                window.ondaDesktop.sendPipFrame(
+                    canvas.toDataURL("image/jpeg", 0.82)
+                );
+            } catch {
+                // A janela do PiP pode ter sido fechada.
+            }
+        };
+
+        paint();
+        session.timer = window.setInterval(paint, 100);
+        return true;
+    }
+
+    function buildDocumentPip(pipWindow, target) {
+        const doc = pipWindow.document;
+        doc.title = "Onda";
+        doc.documentElement.lang = "pt-BR";
+
+        const style = doc.createElement("style");
+        style.textContent = `
+            :root {
+                color-scheme: dark;
+                --pip-tone: #6ed9be;
+                --pip-cream: #f7f3eb;
+                --pip-lime: #cdf27c;
+            }
+            * { box-sizing: border-box; }
+            html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                overflow: hidden;
+                background: #07110e;
+                font-family: "DM Sans", "Segoe UI", system-ui, sans-serif;
+            }
+            .pip-stage {
+                position: relative;
+                width: 100%;
+                height: 100%;
+                overflow: hidden;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background:
+                    radial-gradient(circle at 50% 38%, rgba(205, 242, 124, 0.14), transparent 32%),
+                    radial-gradient(circle at 82% 16%, rgba(110, 217, 190, 0.09), transparent 34%),
+                    radial-gradient(circle at 16% 88%, rgba(110, 217, 190, 0.08), transparent 34%),
+                    #07110e;
+            }
+            .pip-brand {
+                position: absolute;
+                top: 0.75rem;
+                left: 0.9rem;
+                z-index: 4;
+                color: rgba(247, 243, 235, 0.52);
+                font-size: 0.6rem;
+                font-weight: 800;
+                letter-spacing: 0.18em;
+                text-transform: uppercase;
+            }
+            .pip-close {
+                position: absolute;
+                top: 0.55rem;
+                right: 0.6rem;
+                z-index: 5;
+                width: 1.55rem;
+                height: 1.55rem;
+                display: grid;
+                place-items: center;
+                padding: 0;
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 50%;
+                background: rgba(7, 17, 14, 0.55);
+                color: rgba(247, 243, 235, 0.75);
+                font: 400 1rem/1 "Segoe UI", sans-serif;
+                cursor: pointer;
+                opacity: 0;
+                transition: opacity 160ms ease;
+            }
+            .pip-stage:hover .pip-close { opacity: 1; }
+            .pip-video {
+                position: absolute;
+                inset: 0;
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                display: none;
+                background: #07110e;
+            }
+            .pip-stage.has-video .pip-video { display: block; }
+            .pip-avatar-wrap {
+                position: relative;
+                z-index: 2;
+                display: grid;
+                place-items: center;
+            }
+            .pip-stage:not(.has-video) .pip-avatar-wrap {
+                position: absolute;
+                left: 50%;
+                top: 39%;
+                transform: translate(-50%, -50%);
+            }
+            .pip-stage.has-video .pip-avatar-wrap { display: none; }
+            .pip-avatar {
+                position: relative;
+                width: 7.2rem;
+                height: 7.2rem;
+                display: grid;
+                place-items: center;
+                border-radius: 50%;
+                background: var(--pip-tone);
+                color: #07110e;
+                box-shadow: 0 1.2rem 3rem rgba(0, 0, 0, 0.28);
+            }
+            .pip-avatar::before {
+                content: "";
+                position: absolute;
+                inset: -0.55rem;
+                border: 1px solid rgba(205, 242, 124, 0.12);
+                border-radius: 50%;
+            }
+            .pip-avatar.is-speaking::before {
+                border-color: rgba(205, 242, 124, 0.7);
+                animation: pip-ring 1.8s ease-out infinite;
+            }
+            @keyframes pip-ring {
+                0% { transform: scale(0.94); opacity: 0.65; }
+                70% { transform: scale(1.13); opacity: 0; }
+                100% { transform: scale(1.13); opacity: 0; }
+            }
+            .pip-initials {
+                font-size: 2.1rem;
+                font-weight: 800;
+                letter-spacing: -0.04em;
+            }
+            .pip-caption {
+                position: absolute;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                z-index: 3;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 0.28rem;
+                padding: 2.6rem 1rem 1rem;
+                text-align: center;
+                pointer-events: none;
+            }
+            .pip-stage.has-video .pip-caption {
+                padding-top: 3.8rem;
+                background: linear-gradient(transparent, rgba(7, 17, 14, 0.86));
+                align-items: flex-start;
+                text-align: left;
+            }
+            .pip-stage:not(.has-video) .pip-caption {
+                top: 58%;
+                bottom: auto;
+                padding: 0;
+                background: none;
+            }
+            .pip-name {
+                max-width: 92%;
+                overflow: hidden;
+                color: var(--pip-cream);
+                font-size: 1.08rem;
+                font-weight: 800;
+                letter-spacing: -0.025em;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                text-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+            }
+            .pip-status {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.28rem;
+                color: rgba(247, 243, 235, 0.58);
+                font-size: 0.68rem;
+                font-weight: 600;
+            }
+            .pip-stage.is-speaking .pip-status { color: var(--pip-lime); }
+            .pip-status svg {
+                width: 0.8rem;
+                height: 0.8rem;
+                fill: currentColor;
+            }
+            .pip-bars {
+                display: none;
+                align-items: flex-end;
+                gap: 0.16rem;
+                height: 0.75rem;
+                margin-top: 0.12rem;
+            }
+            .pip-stage.is-speaking .pip-bars { display: flex; }
+            .pip-bars i {
+                width: 0.13rem;
+                border-radius: 999px;
+                background: var(--pip-lime);
+                animation: pip-bar 0.9s ease-in-out infinite alternate;
+            }
+            .pip-bars i:nth-child(1) { height: 0.35rem; animation-delay: -0.2s; }
+            .pip-bars i:nth-child(2) { height: 0.62rem; animation-delay: -0.45s; }
+            .pip-bars i:nth-child(3) { height: 0.78rem; animation-delay: -0.1s; }
+            .pip-bars i:nth-child(4) { height: 0.5rem; animation-delay: -0.55s; }
+            .pip-bars i:nth-child(5) { height: 0.32rem; animation-delay: -0.3s; }
+            @keyframes pip-bar {
+                from { transform: scaleY(0.45); opacity: 0.55; }
+                to { transform: scaleY(1); opacity: 1; }
+            }
+        `;
+        doc.head.appendChild(style);
+
+        const stage = doc.createElement("div");
+        stage.className = "pip-stage";
+        stage.innerHTML = `
+            <span class="pip-brand">Onda</span>
+            <button type="button" class="pip-close" aria-label="Fechar PiP">×</button>
+            <video class="pip-video" muted playsinline></video>
+            <div class="pip-avatar-wrap">
+                <div class="pip-avatar"><span class="pip-initials"></span></div>
+            </div>
+            <div class="pip-caption">
+                <strong class="pip-name"></strong>
+                <span class="pip-status">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Zm-7 9a7 7 0 0 0 6 6.93V21H8v2h8v-2h-3v-2.07A7 7 0 0 0 19 12h-2a5 5 0 0 1-10 0H5Z"/></svg>
+                    <span class="pip-status-text"></span>
+                </span>
+                <div class="pip-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+            </div>
+        `;
+        doc.body.appendChild(stage);
+
+        const session = {
+            pipWindow,
+            target,
+            follow: target.follow,
+            selfId: target.selfId,
+            lastRotation: 0,
+            timer: 0,
+            stage,
+            video: stage.querySelector(".pip-video"),
+            avatar: stage.querySelector(".pip-avatar"),
+            initials: stage.querySelector(".pip-initials"),
+            name: stage.querySelector(".pip-name"),
+            status: stage.querySelector(".pip-status-text"),
+            close: stage.querySelector(".pip-close")
+        };
+
+        session.close.addEventListener("click", () => {
+            pipWindow.close();
+        });
+
+        const paint = () => {
+            if (documentPipSession !== session) {
+                return;
+            }
+
+            if (session.follow) {
+                const now = performance.now();
+                if (!session.lastRotation || now - session.lastRotation >= 1000) {
+                    session.lastRotation = now;
+                    const speakingCard = pipSpeakingCard(session.selfId);
+                    const nextTarget = pipTargetFromCard(speakingCard);
+                    if (nextTarget?.id) {
+                        session.target = nextTarget;
+                    }
+                }
+            }
+
+            const target = session.target;
+            if (!target) {
+                return;
+            }
+
+            const liveSpeaking = pipSpeaking(target.id);
+            if (liveSpeaking !== null) {
+                target.speaking = liveSpeaking;
+            }
+
+            const tone = pipTonePalette[Math.abs(target.tone) % pipTonePalette.length];
+            stage.style.setProperty("--pip-tone", tone);
+            session.initials.textContent = pipInitials(target.name);
+            session.name.textContent = target.name;
+            session.status.textContent = target.speaking ? "Falando agora" : "Em foco";
+            stage.classList.toggle("is-speaking", target.speaking);
+            session.avatar.classList.toggle("is-speaking", target.speaking);
+
+            const sourceVideo = pipVideoFor(target.id);
+            const sourceStream = sourceVideo?.srcObject || null;
+            if (sourceStream) {
+                stage.classList.add("has-video");
+                if (session.video.srcObject !== sourceStream) {
+                    session.video.srcObject = sourceStream;
+                    session.video.play().catch(() => {
+                        // O vídeo continua no palco principal.
+                    });
+                }
+            } else {
+                stage.classList.remove("has-video");
+                if (session.video.srcObject) {
+                    session.video.srcObject = null;
+                }
+            }
+        };
+
+        documentPipSession = session;
+        paint();
+        session.timer = window.setInterval(paint, 250);
+
+        pipWindow.addEventListener("pagehide", () => {
+            if (documentPipSession === session) {
+                stopDocumentPip();
+            }
+        }, { once: true });
+
+        return session;
+    }
+
+    async function startDocumentPip(target) {
+        if (!supportsDocumentPip() || !target) {
+            return false;
+        }
+
+        const pipWindow = await window.documentPictureInPicture.requestWindow({
+            width: 480,
+            height: 300
+        });
+        buildDocumentPip(pipWindow, target);
+        return true;
+    }
+
     async function toggleParticipantPip(target) {
         try {
+            if (desktopPipSession) {
+                stopDesktopPip(true);
+                return true;
+            }
+
+            if (supportsDocumentPip() && window.documentPictureInPicture.window) {
+                window.documentPictureInPicture.window.close();
+                return true;
+            }
+
             if (document.pictureInPictureElement) {
                 await document.exitPictureInPicture();
                 return true;
@@ -2497,9 +2930,32 @@
                 return false;
             }
 
+            if (supportsDesktopPip()) {
+                try {
+                    if (await startDesktopPip(normalized)) {
+                        return true;
+                    }
+                } catch {
+                    // Se a janela nativa falhar, tenta os caminhos do navegador.
+                }
+            }
+
+            if (supportsDocumentPip()) {
+                try {
+                    if (await startDocumentPip(normalized)) {
+                        return true;
+                    }
+                } catch {
+                    // Navegador pode bloquear a janela de documento; usa o PiP
+                    // de vídeo nativo como alternativa.
+                }
+            }
+
             return await startParticipantPip(normalized);
         } catch {
             stopParticipantPip();
+            stopDocumentPip();
+            stopDesktopPip(true);
             return false;
         }
     }
@@ -2511,6 +2967,18 @@
             pipSession.follow = pipTarget ? pipTarget.follow : true;
             pipSession.selfId = pipTarget ? pipTarget.selfId : pipSession.selfId;
             pipSession.lastRotation = 0;
+        }
+        if (documentPipSession) {
+            documentPipSession.target = pipTarget;
+            documentPipSession.follow = pipTarget ? pipTarget.follow : true;
+            documentPipSession.selfId = pipTarget ? pipTarget.selfId : documentPipSession.selfId;
+            documentPipSession.lastRotation = 0;
+        }
+        if (desktopPipSession) {
+            desktopPipSession.target = pipTarget;
+            desktopPipSession.follow = pipTarget ? pipTarget.follow : true;
+            desktopPipSession.selfId = pipTarget ? pipTarget.selfId : desktopPipSession.selfId;
+            desktopPipSession.lastRotation = 0;
         }
     }
 
@@ -2548,7 +3016,10 @@
         }
 
         const canvasSupported = typeof HTMLCanvasElement.prototype.captureStream === "function";
-        if (!document.pictureInPictureEnabled || !canvasSupported) {
+        const documentPipAvailable = supportsDocumentPip();
+        const desktopPipAvailable = supportsDesktopPip();
+        if (!desktopPipAvailable && !documentPipAvailable &&
+            (!document.pictureInPictureEnabled || !canvasSupported)) {
             return;
         }
 
