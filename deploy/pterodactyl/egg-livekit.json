@@ -4,16 +4,16 @@
         "version": "PTDL_v2",
         "update_url": null
     },
-    "exported_at": "2026-11-10T19:40:00-04:00",
+    "exported_at": "2026-11-15T17:45:51.008Z",
     "name": "LiveKit SFU",
     "author": "onda@example.com",
-    "description": "LiveKit 1.13.11 standalone para o Onda. Use como servidor de mídia externo do egg do app. Requer alocações separadas para signaling, RTC/TCP e RTC/UDP; TLS é feito por um proxy reverso.",
+    "description": "LiveKit 1.13.11 standalone para o Onda. Use como servidor de mídia externo do egg do app. Requer alocações separadas para signaling, RTC/TCP e RTC/UDP; TLS é feito por um proxy reverso. O desligamento tem carência configurável e envia um segundo sinal para forçar a saída dos participantes.",
     "features": null,
     "docker_images": {
         "Debian Pterodactyl yolk": "ghcr.io/ptero-eggs/yolks:debian"
     },
     "file_denylist": [],
-    "startup": "/home/container/livekit-server --bind 0.0.0.0 --port {{SERVER_PORT}} --rtc.tcp_port {{RTC_TCP_PORT}} --udp-port {{RTC_UDP_PORT}}",
+    "startup": "/bin/bash /home/container/livekit-start.sh",
     "config": {
         "files": "{}",
         "startup": "{\n  \"done\": [\n    \"starting LiveKit server\"\n  ]\n}",
@@ -22,7 +22,7 @@
     },
     "scripts": {
         "installation": {
-            "script": "#!/bin/bash\nset -euo pipefail\n\n# Pterodactyl installation container; server volume is mounted at /mnt/server.\nmkdir -p /mnt/server\ncd /mnt/server\n\n# Permite instalar mesmo em nodes sem DNS quando o binário foi enviado por\n# SFTP. Sem isso, um reinstall tentaria baixar de novo e falharia.\nif [ -x /mnt/server/livekit-server ]; then\n    echo \"livekit-server já existe em /mnt/server; pulando download.\"\n    exit 0\nfi\n\napt-get update -y\napt-get install -y --no-install-recommends ca-certificates curl tar\n\nVERSION=\"1.13.11\"\ncase \"$(uname -m)\" in\n    x86_64|amd64)  ARCH=\"amd64\" ;;\n    aarch64|arm64) ARCH=\"arm64\" ;;\n    armv7l|armv7)  ARCH=\"armv7\" ;;\n    *)\n        echo \"Arquitetura não suportada: $(uname -m)\" >&2\n        exit 1\n        ;;\nesac\n\nTMP=\"$(mktemp -d)\"\ntrap 'rm -rf \"$TMP\"' EXIT\n\nURL=\"https://github.com/livekit/livekit/releases/download/v${VERSION}/livekit_${VERSION}_linux_${ARCH}.tar.gz\"\necho \"Baixando ${URL}\"\nif ! curl --retry 3 --connect-timeout 10 --max-time 180 -fsSL \"$URL\" -o \"$TMP/livekit.tar.gz\"; then\n    echo \"-----------------------------------------\" >&2\n    echo \"Falha ao baixar o LiveKit (DNS/rede do node).\" >&2\n    echo \"Baixe em uma máquina com internet:\" >&2\n    echo \"  ${URL}\" >&2\n    echo \"Extraia 'livekit-server' e envie para /home/container/livekit-server via SFTP.\" >&2\n    echo \"Depois aplique permissão 755: chmod 755 /home/container/livekit-server\" >&2\n    echo \"-----------------------------------------\" >&2\n    exit 1\nfi\n\ntar -xzf \"$TMP/livekit.tar.gz\" -C /mnt/server livekit-server\nchmod +x /mnt/server/livekit-server\n\necho \"-----------------------------------------\"\necho \"LiveKit ${VERSION} instalado em /mnt/server/livekit-server\"\necho \"Crie as alocações de signaling, RTC/TCP e RTC/UDP antes de iniciar.\"\necho \"-----------------------------------------\"\n",
+            "script": "#!/bin/bash\nset -euo pipefail\n\n# Pterodactyl installation container; server volume is mounted at /mnt/server.\nmkdir -p /mnt/server\ncd /mnt/server\n\n# Permite instalar mesmo em nodes sem DNS quando o binário foi enviado por\n# SFTP. Sem isso, um reinstall tentaria baixar de novo e falharia.\ncat > /mnt/server/livekit-start.sh <<'ONDA_START'\n#!/bin/bash\nset -u\ncd /home/container\n\n# Primeiro SIGINT/SIGTERM inicia o desligamento normal do LiveKit. Se os\n# participantes não saírem dentro da carência, um segundo SIGINT força a saída.\ngrace=\"${SHUTDOWN_GRACE_SECONDS:-10}\"\nargs=(\n  --bind 0.0.0.0\n  --port \"${SERVER_PORT:-7880}\"\n  --rtc.tcp_port \"${RTC_TCP_PORT:-7881}\"\n  --udp-port \"${RTC_UDP_PORT:-7882}\"\n)\n\nif [ -n \"${NODE_IP:-}\" ]; then\n  args+=(--node-ip \"${NODE_IP}\")\nfi\n\nif [ -n \"${LIVEKIT_EXTRA_ARGS:-}\" ]; then\n  read -r -a extra_args <<< \"${LIVEKIT_EXTRA_ARGS}\"\n  args+=(\"${extra_args[@]}\")\nfi\n\n./livekit-server \"${args[@]}\" &\npid=$!\nforwarded=0\n\nshutdown() {\n  if [ \"$forwarded\" -eq 0 ]; then\n    forwarded=1\n    kill -INT \"$pid\" 2>/dev/null || true\n    (\n      sleep \"$grace\"\n      kill -INT \"$pid\" 2>/dev/null || true\n    ) &\n  else\n    kill -INT \"$pid\" 2>/dev/null || true\n  fi\n}\n\ntrap shutdown INT TERM\n\nwait \"$pid\"\nstatus=$?\nwhile kill -0 \"$pid\" 2>/dev/null; do\n  wait \"$pid\"\n  status=$?\ndone\nexit \"$status\"\nONDA_START\nchmod 755 /mnt/server/livekit-start.sh\n\nif [ -x /mnt/server/livekit-server ]; then\n    echo \"livekit-server já existe em /mnt/server; pulando download.\"\n    exit 0\nfi\n\napt-get update -y\napt-get install -y --no-install-recommends ca-certificates curl tar\n\nVERSION=\"1.13.11\"\ncase \"$(uname -m)\" in\n    x86_64|amd64)  ARCH=\"amd64\" ;;\n    aarch64|arm64) ARCH=\"arm64\" ;;\n    armv7l|armv7)  ARCH=\"armv7\" ;;\n    *)\n        echo \"Arquitetura não suportada: $(uname -m)\" >&2\n        exit 1\n        ;;\nesac\n\nTMP=\"$(mktemp -d)\"\ntrap 'rm -rf \"$TMP\"' EXIT\n\nURL=\"https://github.com/livekit/livekit/releases/download/v${VERSION}/livekit_${VERSION}_linux_${ARCH}.tar.gz\"\necho \"Baixando ${URL}\"\nif ! curl --retry 3 --connect-timeout 10 --max-time 180 -fsSL \"$URL\" -o \"$TMP/livekit.tar.gz\"; then\n    echo \"-----------------------------------------\" >&2\n    echo \"Falha ao baixar o LiveKit (DNS/rede do node).\" >&2\n    echo \"Baixe em uma máquina com internet:\" >&2\n    echo \"  ${URL}\" >&2\n    echo \"Extraia 'livekit-server' e envie para /home/container/livekit-server via SFTP.\" >&2\n    echo \"Depois aplique permissão 755: chmod 755 /home/container/livekit-server\" >&2\n    echo \"-----------------------------------------\" >&2\n    exit 1\nfi\n\ntar -xzf \"$TMP/livekit.tar.gz\" -C /mnt/server livekit-server\nchmod +x /mnt/server/livekit-server\n\necho \"-----------------------------------------\"\necho \"LiveKit ${VERSION} instalado em /mnt/server/livekit-server\"\necho \"Crie as alocações de signaling, RTC/TCP e RTC/UDP antes de iniciar.\"\necho \"As opções de inicialização ficam nas variáveis do egg.\"\necho \"-----------------------------------------\"\n",
             "container": "ghcr.io/ptero-eggs/installers:debian",
             "entrypoint": "bash"
         }
@@ -57,7 +57,7 @@
         },
         {
             "name": "Use external IP",
-            "description": "Use true ou false (1/0 também é aceito). true faz o LiveKit anunciar o IP público descoberto via STUN; false é para rede local.",
+            "description": "true faz o LiveKit anunciar o IP público descoberto via STUN; false é para rede local.",
             "env_variable": "LIVEKIT_RTC_USE_EXTERNAL_IP",
             "default_value": "true",
             "user_viewable": true,
@@ -66,12 +66,66 @@
         },
         {
             "name": "Log level",
-            "description": "debug, info, warn ou error.",
-            "env_variable": "LIVEKIT_LOG_LEVEL",
+            "description": "debug, info, warn ou error. Aplicado pelo LiveKit no início do servidor.",
+            "env_variable": "LIVEKIT_LOGGING_LEVEL",
             "default_value": "info",
             "user_viewable": true,
             "user_editable": true,
-            "rules": "required|string"
+            "rules": "required|in:debug,info,warn,error"
+        },
+        {
+            "name": "Node IP (opcional)",
+            "description": "IP que o LiveKit deve anunciar aos clientes. Deixe vazio para descoberta automática. Use quando o node tem várias interfaces ou NAT.",
+            "env_variable": "NODE_IP",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string"
+        },
+        {
+            "name": "Sala vazia (segundos)",
+            "description": "Tempo que uma sala vazia permanece aberta antes de ser encerrada. Padrão do LiveKit: 300.",
+            "env_variable": "LIVEKIT_ROOM_EMPTY_TIMEOUT",
+            "default_value": "300",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|integer|min:0"
+        },
+        {
+            "name": "Saída de participante (segundos)",
+            "description": "Tempo que a sala continua aberta depois que o último participante sai. Padrão do LiveKit: 20.",
+            "env_variable": "LIVEKIT_ROOM_DEPARTURE_TIMEOUT",
+            "default_value": "20",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|integer|min:0"
+        },
+        {
+            "name": "Forçar TCP",
+            "description": "true desabilita ICE/UDP e força a mídia por TCP. Use apenas se a rede bloquear UDP.",
+            "env_variable": "LIVEKIT_RTC_FORCE_TCP",
+            "default_value": "false",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|in:true,false,1,0"
+        },
+        {
+            "name": "Carência de desligamento (segundos)",
+            "description": "Tempo entre o primeiro e o segundo SIGINT. O segundo sinal força o LiveKit a encerrar mesmo com participantes conectados. Padrão: 10.",
+            "env_variable": "SHUTDOWN_GRACE_SECONDS",
+            "default_value": "10",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|integer|between:0,120"
+        },
+        {
+            "name": "Argumentos extras",
+            "description": "Argumentos adicionais para o livekit-server, separados por espaço. Ex.: --room.max_participants=50 --logging.pion_level=warn. Use com cuidado; flags repetidas podem sobrescrever as portas.",
+            "env_variable": "LIVEKIT_EXTRA_ARGS",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string"
         }
     ]
 }

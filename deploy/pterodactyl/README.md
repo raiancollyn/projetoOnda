@@ -145,7 +145,45 @@ O egg precisa de **três portas**:
 
 Crie as alocações no painel e informe os mesmos números em `RTC_TCP_PORT`/`RTC_UDP_PORT`. O Wings publica cada allocation em TCP **e** UDP, então o mesmo número cobre os dois protocolos. O egg usa um único port UDP (o Pterodactyl não aloca ranges de forma prática). Para muitas salas simultâneas, prefira a VPS com Compose.
 
-Se a descoberta automática do IP público via STUN falhar, adicione `--node-ip SEU_IP_PUBLICO` ao comando de startup do egg (ou defina `LIVEKIT_RTC_USE_EXTERNAL_IP=false` para rede local).
+Se a descoberta automática do IP público via STUN falhar, preencha a variável `NODE_IP` com o IP público do nó (ou defina `LIVEKIT_RTC_USE_EXTERNAL_IP=false` para rede local).
+
+### Desligamento e restart
+
+O LiveKit faz um desligamento gracioso: ao receber o primeiro `SIGINT`, ele para de aceitar novas conexões e espera os participantes saírem. Isso pode deixar o restart parado em:
+
+```text
+waiting for participants to exit
+```
+
+O egg usa um wrapper (`livekit-start.sh`) que encaminha o primeiro sinal e, depois de `SHUTDOWN_GRACE_SECONDS`, envia um segundo `SIGINT`. O segundo sinal aciona o modo forçado do LiveKit e encerra o processo mesmo com participantes conectados.
+
+O padrão é **10 segundos**. Use `0` para forçar imediatamente ou aumente se quiser dar mais tempo para os clientes saírem.
+
+### Opções de inicialização
+
+As variáveis abaixo são lidas pelo LiveKit ou pelo wrapper:
+
+| Variável | Padrão | Efeito |
+|---|---|---|
+| `LIVEKIT_KEYS` | `devkey: ...` | par API key/secret |
+| `RTC_TCP_PORT` | `7881` | mídia WebRTC via TCP |
+| `RTC_UDP_PORT` | `7882` | mídia WebRTC via UDP |
+| `LIVEKIT_RTC_USE_EXTERNAL_IP` | `true` | anuncia o IP público descoberto via STUN |
+| `NODE_IP` | vazio | IP anunciado; útil em NAT ou múltiplas interfaces |
+| `LIVEKIT_LOGGING_LEVEL` | `info` | `debug`, `info`, `warn` ou `error` |
+| `LIVEKIT_ROOM_EMPTY_TIMEOUT` | `300` | segundos que uma sala vazia permanece aberta |
+| `LIVEKIT_ROOM_DEPARTURE_TIMEOUT` | `20` | segundos após o último participante sair |
+| `LIVEKIT_RTC_FORCE_TCP` | `false` | força mídia por TCP quando UDP está bloqueado |
+| `SHUTDOWN_GRACE_SECONDS` | `10` | carência antes do segundo `SIGINT` |
+| `LIVEKIT_EXTRA_ARGS` | vazio | argumentos adicionais para o `livekit-server` |
+
+Exemplos de `LIVEKIT_EXTRA_ARGS`:
+
+```text
+--room.max_participants=50 --logging.pion_level=warn
+```
+
+As flags são separadas por espaço. Não coloque as portas nesse campo; use `RTC_TCP_PORT`/`RTC_UDP_PORT`. Para qualquer outra opção, consulte `livekit-server help-verbose`.
 
 ### Instalação
 
@@ -155,7 +193,9 @@ Se a descoberta automática do IP público via STUN falhar, adicione `--node-ip 
 4. Aponte o domínio `wss://livekit.seudominio.com` para a porta primária por um proxy reverso com TLS.
 5. No egg do app, use a mesma API key/secret em `LIVEKIT_URL` (`wss://...`), `LIVEKIT_API_KEY` e `LIVEKIT_API_SECRET`.
 
-O install baixa o binário oficial `livekit-server` 1.13.11. O processo não usa banco nem Redis: é um nó único.
+O install baixa o binário oficial `livekit-server` 1.13.11, cria o wrapper `livekit-start.sh` e configura o startup para usá-lo. O processo não usa banco nem Redis: é um nó único.
+
+> Ao atualizar um servidor LiveKit que já existe, rode **Reinstall Server** no painel depois de importar o egg novo. O reinstall recria o `livekit-start.sh`; sem ele, o startup `/bin/bash /home/container/livekit-start.sh` falha.
 
 Exemplo de proxy (Caddy) na máquina do nó:
 
