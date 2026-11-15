@@ -1193,34 +1193,37 @@ else
             </label>
             <label class="camera-toggle-row">
                 <span>
-                    <Icon Name="sparkles" Size="17" />
+                    <Icon Name="users" Size="17" />
                     <span>
-                        <strong>Krisp (experimental)</strong>
-                        <small>Cancelamento avançado no navegador e no app desktop. Requer autenticação do LiveKit Cloud.</small>
+                        <strong>Isolamento de voz</strong>
+                        <small>Pede ao navegador para priorizar a voz e reduzir sons de fundo.</small>
                     </span>
                 </span>
                 <input type="checkbox"
-                       checked="@_krispNoiseEnabled"
-                       @onchange="ToggleKrispNoiseAsync"
-                       disabled="@_audioProcessingBusy"
-                       aria-label="Ativar ou desativar cancelamento de ruído Krisp" />
+                       checked="@_voiceIsolationEnabled"
+                       @onchange="ToggleVoiceIsolationAsync"
+                       disabled="@_audioProcessingBusy || !_voiceIsolationSupported"
+                       aria-label="Ativar ou desativar isolamento de voz" />
             </label>
-            @if (_krispNoiseEnabled)
-            {
-                <label class="field">
-                    <span class="field-label">Qualidade do Krisp</span>
-                    <select class="text-input"
-                            @bind="_krispQuality"
-                            @bind:after="ApplyKrispQualityAsync"
-                            disabled="@_audioProcessingBusy">
-                        <option value="low">Baixa</option>
-                        <option value="medium">Média</option>
-                        <option value="high">Alta</option>
-                    </select>
-                    <span class="field-hint">
-                        Qualidade maior usa mais processamento e pode aumentar o consumo.
+            <label class="camera-toggle-row">
+                <span>
+                    <Icon Name="sparkles" Size="17" />
+                    <span>
+                        <strong>RNNoise (experimental)</strong>
+                        <small>Cancelamento neural no navegador e no app desktop. Funciona no servidor atual.</small>
                     </span>
-                </label>
+                </span>
+                <input type="checkbox"
+                       checked="@_rnnoiseEnabled"
+                       @onchange="ToggleRnnoiseAsync"
+                       disabled="@_audioProcessingBusy"
+                       aria-label="Ativar ou desativar RNNoise" />
+            </label>
+            @if (!_voiceIsolationSupported)
+            {
+                <p class="quality-note">
+                    Este navegador não informa suporte ao isolamento de voz. A opção fica indisponível.
+                </p>
             }
         </div>
 
@@ -1817,8 +1820,9 @@ else
     private bool _noiseSuppression = true;
     private bool _echoCancellation = true;
     private string _audioProcessingIntensity = "standard";
-    private bool _krispNoiseEnabled;
-    private string _krispQuality = "medium";
+    private bool _voiceIsolationEnabled;
+    private bool _voiceIsolationSupported;
+    private bool _rnnoiseEnabled;
     private bool _audioProcessingBusy;
     private bool _audioCanSelectOutput;
     private IReadOnlyList<NativeAudioDeviceView> _audioRouteDevices = [];
@@ -4452,7 +4456,7 @@ else
         await ApplyAudioProcessingAsync();
     }
 
-    private async Task ToggleKrispNoiseAsync(ChangeEventArgs args)
+    private async Task ToggleVoiceIsolationAsync(ChangeEventArgs args)
     {
         if (_nativeMedia || _jsModule is null || _audioProcessingBusy)
         {
@@ -4460,37 +4464,26 @@ else
         }
 
         var enabled = args.Value is true;
-        _krispNoiseEnabled = enabled;
+        _voiceIsolationEnabled = enabled;
         _audioProcessingBusy = true;
         StateHasChanged();
         try
         {
-            var applied = await _jsModule.InvokeAsync<bool>("setKrispEnabled", enabled);
+            var applied = await _jsModule.InvokeAsync<bool>("setVoiceIsolation", enabled);
             if (!applied)
             {
-                _krispNoiseEnabled = false;
-                var error = string.Empty;
-                try
-                {
-                    error = await _jsModule.InvokeAsync<string>("getKrispLastError");
-                }
-                catch (Exception ex) when (ex is JSException or JSDisconnectedException)
-                {
-                    // Keep the generic message.
-                }
-
+                _voiceIsolationEnabled = false;
+                _voiceIsolationSupported = false;
                 Toasts.Show(
-                    error.Contains("authenticate", StringComparison.OrdinalIgnoreCase)
-                        ? "O Krisp exige autenticação do LiveKit Cloud. O servidor de mídia atual não oferece esse endpoint."
-                        : "O Krisp não está disponível neste navegador ou não conseguiu carregar o modelo.",
-                    ToastKind.Error,
-                    8000);
+                    "O isolamento de voz não está disponível neste navegador.",
+                    ToastKind.Info,
+                    6000);
             }
         }
         catch (Exception ex) when (ex is JSException or JSDisconnectedException)
         {
-            _krispNoiseEnabled = false;
-            Toasts.Show("Não foi possível ativar o Krisp.", ToastKind.Error);
+            _voiceIsolationEnabled = false;
+            Toasts.Show("Não foi possível ativar o isolamento de voz.", ToastKind.Error);
         }
         finally
         {
@@ -4499,27 +4492,33 @@ else
         }
     }
 
-    private async Task ApplyKrispQualityAsync()
+    private async Task ToggleRnnoiseAsync(ChangeEventArgs args)
     {
-        if (_nativeMedia || _jsModule is null || _audioProcessingBusy || !_krispNoiseEnabled)
+        if (_nativeMedia || _jsModule is null || _audioProcessingBusy)
         {
             return;
         }
 
+        var enabled = args.Value is true;
+        _rnnoiseEnabled = enabled;
         _audioProcessingBusy = true;
         StateHasChanged();
         try
         {
-            var applied = await _jsModule.InvokeAsync<bool>("setKrispQuality", _krispQuality);
+            var applied = await _jsModule.InvokeAsync<bool>("setRnnoiseEnabled", enabled);
             if (!applied)
             {
-                _krispNoiseEnabled = false;
-                Toasts.Show("Não foi possível alterar a qualidade do Krisp.", ToastKind.Error);
+                _rnnoiseEnabled = false;
+                Toasts.Show(
+                    "O RNNoise não está disponível neste navegador ou não conseguiu carregar o modelo.",
+                    ToastKind.Error,
+                    7000);
             }
         }
         catch (Exception ex) when (ex is JSException or JSDisconnectedException)
         {
-            Toasts.Show("Não foi possível alterar a qualidade do Krisp.", ToastKind.Error);
+            _rnnoiseEnabled = false;
+            Toasts.Show("Não foi possível ativar o RNNoise.", ToastKind.Error);
         }
         finally
         {
@@ -4610,10 +4609,9 @@ else
             _audioProcessingIntensity = settings?.ProcessingIntensity is "soft" or "standard" or "aggressive"
                 ? settings.ProcessingIntensity
                 : "standard";
-            _krispNoiseEnabled = settings?.KrispEnabled ?? false;
-            _krispQuality = settings?.KrispQuality is "low" or "medium" or "high"
-                ? settings.KrispQuality
-                : "medium";
+            _voiceIsolationEnabled = settings?.VoiceIsolation ?? false;
+            _voiceIsolationSupported = settings?.VoiceIsolationSupported ?? false;
+            _rnnoiseEnabled = settings?.RnnoiseEnabled ?? false;
         }
         catch (Exception ex) when (ex is JSException or JSDisconnectedException)
         {
@@ -5052,8 +5050,9 @@ else
         bool NoiseSuppression,
         bool EchoCancellation,
         string? ProcessingIntensity = null,
-        bool KrispEnabled = false,
-        string? KrispQuality = null);
+        bool VoiceIsolation = false,
+        bool VoiceIsolationSupported = false,
+        bool RnnoiseEnabled = false);
 
     private sealed record CameraOptionsView(
         IReadOnlyList<CameraDeviceView> Devices,

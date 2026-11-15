@@ -78,12 +78,10 @@ let outputVolume = storedAudioPreferences.outputVolume;
 let noiseSuppression = storedAudioPreferences.noiseSuppression;
 let echoCancellation = storedAudioPreferences.echoCancellation;
 let processingIntensity = storedAudioPreferences.processingIntensity;
-let krispEnabled = storedAudioPreferences.krispEnabled;
-let krispQuality = storedAudioPreferences.krispQuality;
-let krispModulePromise = null;
-let krispProcessor = null;
-let krispTrack = null;
-let krispLastError = "";
+let voiceIsolation = storedAudioPreferences.voiceIsolation;
+let rnnoiseEnabled = storedAudioPreferences.rnnoiseEnabled;
+let rnnoiseModulePromise = null;
+let rnnoiseWorkletReady = new WeakSet();
 
 function readAudioPreferences() {
     const fallback = {
@@ -94,8 +92,8 @@ function readAudioPreferences() {
         noiseSuppression: true,
         echoCancellation: true,
         processingIntensity: "standard",
-        krispEnabled: false,
-        krispQuality: "medium"
+        voiceIsolation: false,
+        rnnoiseEnabled: false
     };
 
     try {
@@ -119,10 +117,8 @@ function readAudioPreferences() {
             processingIntensity: ["soft", "standard", "aggressive"].includes(parsed.processingIntensity)
                 ? parsed.processingIntensity
                 : "standard",
-            krispEnabled: parsed.krispEnabled === true,
-            krispQuality: ["low", "medium", "high"].includes(parsed.krispQuality)
-                ? parsed.krispQuality
-                : "medium"
+            voiceIsolation: parsed.voiceIsolation === true,
+            rnnoiseEnabled: parsed.rnnoiseEnabled === true
         };
     } catch {
         return fallback;
@@ -139,8 +135,8 @@ function persistAudioPreferences() {
             noiseSuppression,
             echoCancellation,
             processingIntensity,
-            krispEnabled,
-            krispQuality
+            voiceIsolation,
+            rnnoiseEnabled
         }));
     } catch {
         // Private mode may block persistence.
@@ -357,16 +353,6 @@ function bindRoomEvents(activeRoom) {
     activeRoom.on(RoomEvent.TrackUnsubscribed, handleTrackUnsubscribed);
     activeRoom.on(RoomEvent.ParticipantDisconnected, handleParticipantDisconnected);
     activeRoom.on(RoomEvent.ActiveSpeakersChanged, handleActiveSpeakersChanged);
-    activeRoom.on(RoomEvent.LocalTrackPublished, (publication) => {
-        if (!initialized ||
-            !krispEnabled ||
-            publication.source !== Track.Source.Microphone ||
-            local.micTrack !== publication.track) {
-            return;
-        }
-
-        void attachKrispToTrack(local.micTrack);
-    });
     ensurePipObserver();
     activeRoom.on(RoomEvent.AudioPlaybackStatusChanged, () => {
         if (!initialized || !room) {
@@ -761,101 +747,124 @@ async function playAllRemoteAudio() {
 /* Microphone                                                         */
 /* ------------------------------------------------------------------ */
 
-const KRISP_MODULE_URL = new URL("./vendor/krisp-noise-filter.esm.mjs", import.meta.url).href;
+const RNNOISE_INDEX_URL = new URL("./vendor/rnnoise/index.js", import.meta.url).href;
+const RNNOISE_WORKLET_URL = new URL("./vendor/rnnoise/workletProcessor.js", import.meta.url).href;
+const RNNOISE_WASM_URL = new URL("./vendor/rnnoise/rnnoise.wasm", import.meta.url).href;
+const RNNOISE_SIMD_WASM_URL = new URL("./vendor/rnnoise/rnnoise_simd.wasm", import.meta.url).href;
+let rnnoiseBinaryPromise = null;
 
-async function loadKrispModule() {
-    krispModulePromise ??= import(KRISP_MODULE_URL);
-    return krispModulePromise;
+function isVoiceIsolationSupported() {
+    return navigator.mediaDevices?.getSupportedConstraints?.().voiceIsolation === true;
 }
 
-async function attachKrispToTrack(track) {
-    if (!krispEnabled || !track) {
+async function loadRnnoiseModule() {
+    rnnoiseModulePromise ??= import(RNNOISE_INDEX_URL);
+    return rnnoiseModulePromise;
+}
+
+async function loadRnnoiseBinary() {
+    rnnoiseBinaryPromise ??= (async () => {
+        const { loadRnnoise } = await loadRnnoiseModule();
+        return loadRnnoise({
+            url: RNNOISE_WASM_URL,
+            simdUrl: RNNOISE_SIMD_WASM_URL
+        });
+    })();
+    return rnnoiseBinaryPromise;
+}
+
+async function connectRnnoise(input) {
+    if (!input || input.rnnoiseNode) {
         return true;
     }
 
-    if (krispTrack === track && krispProcessor) {
+    if (!input.context.audioWorklet || typeof AudioWorkletNode === "undefined") {
+        throw new Error("AudioWorklet indisponível para o RNNoise.");
+    }
+    if (Math.round(input.context.sampleRate) !== 48000) {
+        throw new Error("O RNNoise requer uma taxa de amostragem de 48 kHz.");
+    }
+
+    const { RnnoiseWorkletNode } = await loadRnnoiseModule();
+    const wasmBinary = await loadRnnoiseBinary();
+    if (!rnnoiseWorkletReady.has(input.context)) {
+        await input.context.audioWorklet.addModule(RNNOISE_WORKLET_URL);
+        rnnoiseWorkletReady.add(input.context);
+    }
+
+    const node = new RnnoiseWorkletNode(input.context, {
+        maxChannels: 1,
+        wasmBinary
+    });
+    input.gain.disconnect();
+    input.gain.connect(node);
+    node.connect(input.destination);
+    input.rnnoiseNode = node;
+    return true;
+}
+
+function disconnectRnnoise(input) {
+    if (!input?.rnnoiseNode) {
+        return;
+    }
+
+    try {
+        input.gain.disconnect();
+    } catch {
+        // Already disconnected.
+    }
+    try {
+        input.rnnoiseNode.disconnect();
+        input.rnnoiseNode.destroy?.();
+    } catch {
+        // Already destroyed.
+    }
+    input.rnnoiseNode = null;
+    input.gain.connect(input.destination);
+}
+
+export async function setRnnoiseEnabled(enabled) {
+    rnnoiseEnabled = Boolean(enabled);
+    persistAudioPreferences();
+
+    if (!initialized || !local.micInput) {
         return true;
     }
 
-    if (!track.sender) {
-        // LocalTrackPublished will retry once the sender is available.
+    if (!rnnoiseEnabled) {
+        disconnectRnnoise(local.micInput);
         return true;
     }
 
     try {
-        const { KrispNoiseFilter, isKrispNoiseFilterSupported } = await loadKrispModule();
-        if (!isKrispNoiseFilterSupported()) {
-            throw new Error("Krisp não é suportado neste navegador.");
-        }
-
-        const processor = KrispNoiseFilter({ quality: krispQuality });
-        await track.setProcessor(processor);
-        await processor.setEnabled(true);
-        krispProcessor = processor;
-        krispTrack = track;
+        await connectRnnoise(local.micInput);
         return true;
     } catch (error) {
-        krispLastError = String(error?.message || error || "");
-        console.warn("Onda: Krisp noise filter could not be enabled", error);
-        krispEnabled = false;
-        krispProcessor = null;
-        krispTrack = null;
+        console.warn("Onda: RNNoise could not be enabled", error);
+        rnnoiseEnabled = false;
         persistAudioPreferences();
+        disconnectRnnoise(local.micInput);
         return false;
     }
 }
 
-export function getKrispLastError() {
-    return krispLastError;
-}
-
-export async function setKrispQuality(quality) {
-    const normalized = ["low", "medium", "high"].includes(quality) ? quality : "medium";
-    if (normalized === krispQuality) {
-        return true;
+export async function setVoiceIsolation(enabled) {
+    const next = Boolean(enabled);
+    if (next && !isVoiceIsolationSupported()) {
+        return false;
     }
 
-    krispQuality = normalized;
+    voiceIsolation = next;
     persistAudioPreferences();
 
-    if (!krispEnabled || !initialized || !local.micTrack) {
-        return true;
-    }
-
-    try {
-        await local.micTrack.stopProcessor();
-    } catch (error) {
-        console.warn("Onda: could not restart Krisp for quality change", error);
-    }
-    krispProcessor = null;
-    krispTrack = null;
-    return attachKrispToTrack(local.micTrack);
-}
-
-export async function setKrispEnabled(enabled) {
-    krispEnabled = Boolean(enabled);
-    persistAudioPreferences();
-
-    if (!initialized || !room) {
-        return true;
-    }
-
-    if (!krispEnabled) {
-        try {
-            await local.micTrack?.stopProcessor?.();
-        } catch (error) {
-            console.warn("Onda: could not stop Krisp processor", error);
+    if (initialized && room && local.micTrack) {
+        const deviceId = local.micDeviceId || inputDeviceId;
+        if (deviceId) {
+            await switchAudioInput(deviceId, true);
         }
-        krispProcessor = null;
-        krispTrack = null;
-        return true;
     }
 
-    if (!local.micTrack) {
-        return true;
-    }
-
-    return attachKrispToTrack(local.micTrack);
+    return true;
 }
 
 function disposeMicInput(input = local.micInput) {
@@ -863,6 +872,11 @@ function disposeMicInput(input = local.micInput) {
         return;
     }
 
+    try {
+        input.rnnoiseNode?.destroy?.();
+    } catch {
+        // Already destroyed.
+    }
     try {
         input.rawTrack?.mediaStreamTrack?.removeEventListener("ended", handleMicrophoneEnded);
         input.rawTrack?.stop();
@@ -887,7 +901,11 @@ async function createGainProcessedMicrophoneTrack(rawTrack) {
 
     let context = null;
     try {
-        context = new AudioContextCtor({ latencyHint: "interactive" });
+        try {
+            context = new AudioContextCtor({ latencyHint: "interactive", sampleRate: 48000 });
+        } catch {
+            context = new AudioContextCtor({ latencyHint: "interactive" });
+        }
         await context.resume();
         if (context.state !== "running") {
             await context.close();
@@ -903,8 +921,8 @@ async function createGainProcessedMicrophoneTrack(rawTrack) {
 
         const processedMediaTrack = destination.stream.getAudioTracks()[0];
         // A track created by MediaStreamAudioDestinationNode rejects most
-        // constraints. Krisp asks for constraints during initialization, so
-        // make that call a no-op while its worklet processes this track.
+        // constraints. Keep constraint negotiation a no-op for this synthetic
+        // track so audio processors can use it.
         try {
             Object.defineProperty(processedMediaTrack, "applyConstraints", {
                 value: async () => {},
@@ -920,9 +938,19 @@ async function createGainProcessedMicrophoneTrack(rawTrack) {
             false,
             context
         );
-        local.micInput = { rawTrack, context, source, gain, destination, processedTrack };
+        const input = { rawTrack, context, source, gain, destination, processedTrack, rnnoiseNode: null };
+        local.micInput = input;
         local.micDeviceId = rawTrack.mediaStreamTrack.getSettings?.().deviceId || inputDeviceId;
         rawTrack.mediaStreamTrack.addEventListener("ended", handleMicrophoneEnded, { once: true });
+        if (rnnoiseEnabled) {
+            try {
+                await connectRnnoise(input);
+            } catch (error) {
+                console.warn("Onda: RNNoise could not be attached", error);
+                rnnoiseEnabled = false;
+                persistAudioPreferences();
+            }
+        }
         return processedTrack;
     } catch (error) {
         console.warn("Onda: microphone gain processing unavailable", error);
@@ -941,7 +969,8 @@ async function createMicrophoneTrackWithFallback() {
     const baseOptions = {
         echoCancellation,
         noiseSuppression,
-        autoGainControl: processingIntensity !== "aggressive"
+        autoGainControl: processingIntensity !== "aggressive",
+        ...(voiceIsolation && isVoiceIsolationSupported() ? { voiceIsolation: true } : {})
     };
 
     try {
@@ -1123,6 +1152,7 @@ export async function switchAudioInput(deviceId, force = false) {
             echoCancellation,
             noiseSuppression,
             autoGainControl: processingIntensity !== "aggressive",
+            ...(voiceIsolation && isVoiceIsolationSupported() ? { voiceIsolation: true } : {}),
             deviceId: { exact: deviceId }
         });
         const nextTrack = await createGainProcessedMicrophoneTrack(rawTrack);
@@ -1168,8 +1198,6 @@ export async function switchAudioInput(deviceId, force = false) {
         }
         local.micTrack = oldTrack;
         local.hasMic = Boolean(oldTrack);
-        krispProcessor = null;
-        krispTrack = null;
         local.micInput = oldInput;
         inputDeviceId = "";
         persistAudioPreferences();
@@ -1295,8 +1323,9 @@ export async function getAudioSettings() {
         noiseSuppression,
         echoCancellation,
         processingIntensity,
-        krispEnabled,
-        krispQuality,
+        voiceIsolation,
+        rnnoiseEnabled,
+        voiceIsolationSupported: isVoiceIsolationSupported(),
         canSelectOutput: typeof HTMLMediaElement !== "undefined" &&
             typeof HTMLMediaElement.prototype.setSinkId === "function"
     };
