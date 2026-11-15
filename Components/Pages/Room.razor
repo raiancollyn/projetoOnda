@@ -1621,6 +1621,8 @@ else
     private bool _presenceHeartbeatStarted;
     private bool _presenceRejoinBusy;
     private bool _visibilityListenerInstalled;
+    private CancellationTokenSource? _presenceLoopCts;
+    private Task? _presenceLoopTask;
     private bool _jsInitializing;
     private string? _jsError;
     private bool _audioBlocked;
@@ -1896,6 +1898,55 @@ else
         _gatePassword = string.Empty;
         _gateError = null;
         _showGatePassword = false;
+        StartServerPresenceLoop();
+    }
+
+    private void StartServerPresenceLoop()
+    {
+        if (_presenceLoopTask is { IsCompleted: false })
+        {
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _presenceLoopCts = cts;
+        Rooms.Touch(Code, Guest.Id);
+        _presenceLoopTask = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+            try
+            {
+                while (await timer.WaitForNextTickAsync(cts.Token))
+                {
+                    if (_disposed || !_joined)
+                    {
+                        break;
+                    }
+
+                    Rooms.Touch(Code, Guest.Id);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // The room page is going away.
+            }
+        });
+    }
+
+    private void StopServerPresenceLoop()
+    {
+        var cts = _presenceLoopCts;
+        _presenceLoopCts = null;
+        _presenceLoopTask = null;
+        try
+        {
+            cts?.Cancel();
+            cts?.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already stopped.
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -3833,6 +3884,7 @@ else
         _leaveBusy = true;
         try
         {
+            StopServerPresenceLoop();
             await DisableRoomExitGuardAsync();
             await ReleaseWakeLockAsync();
             await StopPresenceHeartbeatAsync();
@@ -4494,6 +4546,7 @@ else
         }
 
         _disposed = true;
+        StopServerPresenceLoop();
         Rooms.RoomChanged -= HandleRoomChanged;
         Rooms.ChatChanged -= HandleChatChanged;
         Rooms.SignalReceived -= HandleSignal;
