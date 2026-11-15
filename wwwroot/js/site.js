@@ -2173,7 +2173,338 @@
         document.documentElement.dataset.mediaFit = initialMediaFit;
     }
 
+    const pipTonePalette = [
+        "#ff826a",
+        "#6ed9be",
+        "#a6a7ff",
+        "#ffd47c",
+        "#8ecdf4",
+        "#ef9bc4"
+    ];
+
+    let pipSession = null;
+    let pipTarget = null;
+
+    function normalizePipTarget(target) {
+        if (!target || typeof target !== "object" || !target.id) {
+            return null;
+        }
+
+        return {
+            id: String(target.id),
+            name: String(target.name || "Onda"),
+            tone: Number.isFinite(Number(target.tone)) ? Number(target.tone) : 0,
+            speaking: Boolean(target.speaking),
+            follow: Boolean(target.follow)
+        };
+    }
+
+    function pipSpeakingCard() {
+        return document.querySelector(".person-card.is-speaking[data-peer-id]") ||
+            document.querySelector(".people-row.is-speaking[data-peer-id]") ||
+            null;
+    }
+
+    function pipTargetFromCard(card) {
+        if (!card) {
+            return null;
+        }
+
+        const avatar = card.querySelector(".avatar");
+        const toneClass = Array.from(avatar?.classList || [])
+            .find((name) => name.startsWith("tone-"));
+        const tone = toneClass ? Number(toneClass.slice(5)) : 0;
+        const nameNode = card.querySelector(".person-copy h2 > span") ||
+            card.querySelector(".people-name");
+        const name = (nameNode?.textContent || "Onda").trim().replace(/\s*você\s*$/i, "");
+
+        return {
+            id: card.dataset.peerId,
+            name,
+            tone: Number.isFinite(tone) ? tone : 0,
+            speaking: true,
+            follow: true
+        };
+    }
+
+    function pipInitials(name) {
+        const parts = String(name || "Onda").trim().split(/\s+/).filter(Boolean);
+        if (parts.length === 0) {
+            return "O";
+        }
+        if (parts.length === 1) {
+            return parts[0].slice(0, 2).toUpperCase();
+        }
+        return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+    }
+
+    function pipVideoFor(peerId) {
+        const videos = Array.from(document.querySelectorAll("video[data-peer-id]"))
+            .filter((video) => video.dataset.peerId === peerId &&
+                video.__ondaLiveKitTrack &&
+                video.videoWidth > 0 &&
+                video.videoHeight > 0);
+
+        return videos.find((video) => video.dataset.mediaKind === "screen") ||
+            videos.find((video) => video.dataset.mediaKind !== "screen") ||
+            videos[0] ||
+            null;
+    }
+
+    function drawPipAvatar(context, width, height, target) {
+        const tone = pipTonePalette[Math.abs(target.tone) % pipTonePalette.length];
+        const gradient = context.createLinearGradient(0, 0, width, height);
+        gradient.addColorStop(0, "#10231d");
+        gradient.addColorStop(1, "#07110e");
+        context.fillStyle = gradient;
+        context.fillRect(0, 0, width, height);
+
+        context.globalAlpha = 0.22;
+        context.fillStyle = tone;
+        context.beginPath();
+        context.arc(width * 0.82, height * 0.18, width * 0.32, 0, Math.PI * 2);
+        context.fill();
+        context.beginPath();
+        context.arc(width * 0.18, height * 0.88, width * 0.28, 0, Math.PI * 2);
+        context.fill();
+        context.globalAlpha = 1;
+
+        const centerX = width / 2;
+        const centerY = height * 0.4;
+        const radius = Math.min(width, height) * 0.16;
+        context.beginPath();
+        context.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        context.fillStyle = tone;
+        context.fill();
+
+        context.fillStyle = "#10231d";
+        context.font = `700 ${Math.round(radius * 0.72)}px "DM Sans", "Segoe UI", sans-serif`;
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        context.fillText(pipInitials(target.name), centerX, centerY + 1);
+
+        context.fillStyle = "#f0ece5";
+        context.font = `700 ${Math.round(width * 0.055)}px "DM Sans", "Segoe UI", sans-serif`;
+        context.fillText(target.name, centerX, height * 0.68, width * 0.82);
+
+        context.fillStyle = target.speaking ? "#cdf27c" : "rgba(240, 236, 229, 0.62)";
+        context.font = `600 ${Math.round(width * 0.032)}px "DM Sans", "Segoe UI", sans-serif`;
+        context.fillText(target.speaking ? "Falando agora" : "Em foco", centerX, height * 0.79);
+
+        if (target.speaking) {
+            const barWidth = width * 0.012;
+            const gap = width * 0.012;
+            const baseY = height * 0.9;
+            const heights = [0.035, 0.055, 0.075, 0.05, 0.03];
+            const total = heights.length * barWidth + (heights.length - 1) * gap;
+            let x = centerX - total / 2;
+            context.fillStyle = "#cdf27c";
+            heights.forEach((ratio, index) => {
+                const barHeight = height * ratio * (index % 2 === 0 ? 1 : 0.72);
+                context.beginPath();
+                context.fillRect(x, baseY - barHeight, barWidth, barHeight);
+                x += barWidth + gap;
+            });
+        }
+    }
+
+    function drawPipVideo(context, width, height, video, target) {
+        const sourceWidth = video.videoWidth;
+        const sourceHeight = video.videoHeight;
+        const scale = Math.max(width / sourceWidth, height / sourceHeight);
+        const drawWidth = sourceWidth * scale;
+        const drawHeight = sourceHeight * scale;
+        const x = (width - drawWidth) / 2;
+        const y = (height - drawHeight) / 2;
+        context.drawImage(video, x, y, drawWidth, drawHeight);
+
+        const gradient = context.createLinearGradient(0, height * 0.62, 0, height);
+        gradient.addColorStop(0, "rgba(7, 17, 14, 0)");
+        gradient.addColorStop(1, "rgba(7, 17, 14, 0.82)");
+        context.fillStyle = gradient;
+        context.fillRect(0, height * 0.58, width, height * 0.42);
+
+        context.textAlign = "left";
+        context.textBaseline = "alphabetic";
+        context.fillStyle = "#f0ece5";
+        context.font = `700 ${Math.round(width * 0.045)}px "DM Sans", "Segoe UI", sans-serif`;
+        context.fillText(target.name, width * 0.05, height * 0.9, width * 0.7);
+
+        context.fillStyle = "#cdf27c";
+        context.font = `600 ${Math.round(width * 0.028)}px "DM Sans", "Segoe UI", sans-serif`;
+        context.fillText("Transmitindo", width * 0.05, height * 0.96);
+    }
+
+    function pipSpeaking(peerId) {
+        const escaped = typeof CSS !== "undefined" && CSS.escape
+            ? CSS.escape(peerId)
+            : String(peerId).replace(/"/g, '\\"');
+        if (document.querySelector(`.person-card[data-peer-id="${escaped}"].is-speaking`) ||
+            document.querySelector(`.people-row[data-peer-id="${escaped}"].is-speaking`) ||
+            document.querySelector(`.focus-avatar-card[data-peer-id="${escaped}"].is-speaking`)) {
+            return true;
+        }
+        if (document.querySelector(`.person-card[data-peer-id="${escaped}"]`) ||
+            document.querySelector(`.people-row[data-peer-id="${escaped}"]`) ||
+            document.querySelector(`.focus-avatar-card[data-peer-id="${escaped}"]`)) {
+            return false;
+        }
+        return null;
+    }
+
+    function drawPipFrame(session) {
+        const context = session.canvas.getContext("2d");
+        if (!context) {
+            return;
+        }
+
+        const { width, height } = session.canvas;
+        if (session.follow) {
+            const speakingCard = pipSpeakingCard();
+            if (speakingCard) {
+                const nextTarget = pipTargetFromCard(speakingCard);
+                if (nextTarget && nextTarget.id) {
+                    session.target = nextTarget;
+                }
+            }
+        }
+
+        const target = session.target;
+        if (target) {
+            const liveSpeaking = pipSpeaking(target.id);
+            if (liveSpeaking !== null) {
+                target.speaking = liveSpeaking;
+            }
+        }
+        const video = target ? pipVideoFor(target.id) : null;
+        if (video) {
+            drawPipVideo(context, width, height, video, target);
+        } else if (target) {
+            drawPipAvatar(context, width, height, target);
+        }
+    }
+
+    function stopParticipantPip() {
+        const session = pipSession;
+        pipSession = null;
+        if (!session) {
+            return;
+        }
+
+        if (session.frame) {
+            cancelAnimationFrame(session.frame);
+        }
+        session.stream.getTracks().forEach((track) => track.stop());
+        session.video.srcObject = null;
+        session.video.remove();
+        session.canvas.remove();
+    }
+
+    async function startParticipantPip(target) {
+        if (!target || !document.pictureInPictureEnabled ||
+            typeof HTMLCanvasElement.prototype.captureStream !== "function") {
+            return false;
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = 640;
+        canvas.height = 360;
+        canvas.style.position = "fixed";
+        canvas.style.left = "-10000px";
+        canvas.style.top = "0";
+        canvas.style.width = "1px";
+        canvas.style.height = "1px";
+        canvas.style.pointerEvents = "none";
+
+        const video = document.createElement("video");
+        video.muted = true;
+        video.playsInline = true;
+        video.setAttribute("playsinline", "");
+        video.style.position = "fixed";
+        video.style.left = "-10000px";
+        video.style.top = "0";
+        video.style.width = "1px";
+        video.style.height = "1px";
+        video.style.pointerEvents = "none";
+
+        document.body.appendChild(canvas);
+        document.body.appendChild(video);
+
+        const stream = canvas.captureStream(15);
+        video.srcObject = stream;
+
+        try {
+            await video.play();
+            await video.requestPictureInPicture();
+        } catch {
+            stream.getTracks().forEach((track) => track.stop());
+            video.srcObject = null;
+            video.remove();
+            canvas.remove();
+            return false;
+        }
+
+        const session = {
+            canvas,
+            video,
+            stream,
+            target,
+            follow: target.follow,
+            frame: 0
+        };
+        pipSession = session;
+        pipTarget = target;
+
+        const draw = () => {
+            if (pipSession !== session) {
+                return;
+            }
+            drawPipFrame(session);
+            session.frame = requestAnimationFrame(draw);
+        };
+        draw();
+
+        video.addEventListener("leavepictureinpicture", () => {
+            if (pipSession === session) {
+                stopParticipantPip();
+            }
+        }, { once: true });
+
+        return true;
+    }
+
+    async function toggleParticipantPip(target) {
+        try {
+            if (document.pictureInPictureElement) {
+                await document.exitPictureInPicture();
+                return true;
+            }
+
+            const normalized = normalizePipTarget(target);
+            if (!normalized) {
+                return false;
+            }
+
+            return await startParticipantPip(normalized);
+        } catch {
+            stopParticipantPip();
+            return false;
+        }
+    }
+
+    function updatePipTarget(target) {
+        pipTarget = normalizePipTarget(target);
+        if (pipSession) {
+            pipSession.target = pipTarget;
+            pipSession.follow = pipTarget ? pipTarget.follow : true;
+        }
+    }
+
     async function toggleVideoPip() {
+        if (pipTarget) {
+            return toggleParticipantPip(pipTarget);
+        }
+
         try {
             if (document.pictureInPictureElement) {
                 await document.exitPictureInPicture();
@@ -2498,6 +2829,8 @@
         setWakeLock,
         setPipMode,
         toggleVideoPip,
+        toggleParticipantPip,
+        updatePipTarget,
         getMediaFit,
         setMediaFit,
         startPresenceHeartbeat,

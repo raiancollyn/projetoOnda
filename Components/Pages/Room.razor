@@ -377,13 +377,17 @@ else
                 }
 
                 <div class="stage-area">
-                    @if (Shares.Count > 0)
+                    @if (StageHasContent)
                     {
                         <div class="stage-toolbar">
                             <div class="stage-toolbar-copy">
-                                <span class="stage-label"><span class="live-dot"></span> No palco</span>
+                                <span class="stage-label"><span class="live-dot"></span> @(FocusedParticipant is not null ? "Em foco" : "No palco")</span>
                                 <span class="stage-subtitle">
-                                    @if (Shares.Count == 1)
+                                    @if (FocusedParticipant is not null)
+                                    {
+                                        <text>@FocusedStageSubtitle</text>
+                                    }
+                                    else if (Shares.Count == 1)
                                     {
                                         <text>@(Shares[0].ScreenOn ? "Uma tela em destaque." : "Uma câmera em destaque.")</text>
                                     }
@@ -466,32 +470,78 @@ else
                             </div>
                         </div>
 
-                        @if (ShowSpotlight && FocusedShare is not null)
+                        @if (FocusedParticipant is ParticipantView focused)
                         {
-                            <div class="spotlight-layout">
-                                <div class="spotlight-feature" @key="FocusedShare.Id">
-                                    <RoomMediaTile Participant="FocusedShare"
-                                                    IsSelf="@(FocusedShare.Id == Guest.Id)"
-                                                    IsFeatured="true"
-                                                    FitOverride="_mediaFit"
-                                                    OnFitChanged="SetMediaFitAsync"
-                                                    OnFocus="FocusShare" />
-                                </div>
-                                <div class="focus-rail" aria-label="Outras transmissões">
-                                    @foreach (var share in OtherShares)
+                            @if (FocusedHasMedia)
+                            {
+                                <div class="spotlight-layout @(OtherShares.Count == 0 ? "has-no-rail" : null)">
+                                    <div class="spotlight-feature" @key="focused.Id">
+                                        <RoomMediaTile Participant="focused"
+                                                        IsSelf="@(focused.Id == Guest.Id)"
+                                                        IsFeatured="true"
+                                                        FitOverride="_mediaFit"
+                                                        OnFitChanged="SetMediaFitAsync"
+                                                        OnFocus="FocusShare" />
+                                    </div>
+                                    @if (OtherShares.Count > 0)
                                     {
-                                        <div class="focus-rail-item" @key="share.Id">
-                                            <RoomMediaTile Participant="share"
-                                                            IsSelf="@(share.Id == Guest.Id)"
-                                                            IsThumbnail="true"
-                                                            FitOverride="_mediaFit"
-                                                    OnFitChanged="SetMediaFitAsync"
-                                                    OnFocus="FocusShare" />
+                                        <div class="focus-rail" aria-label="Outras transmissões">
+                                            @foreach (var share in OtherShares)
+                                            {
+                                                <div class="focus-rail-item" @key="share.Id">
+                                                    <RoomMediaTile Participant="share"
+                                                                    IsSelf="@(share.Id == Guest.Id)"
+                                                                    IsThumbnail="true"
+                                                                    FitOverride="_mediaFit"
+                                                                    OnFitChanged="SetMediaFitAsync"
+                                                                    OnFocus="FocusShare" />
+                                                </div>
+                                            }
+                                            <span class="focus-rail-hint">Clique para trocar o foco</span>
                                         </div>
                                     }
-                                    <span class="focus-rail-hint">Clique para trocar o foco</span>
                                 </div>
-                            </div>
+                            }
+                            else
+                            {
+                                <div class="focus-card-layout @(OtherShares.Count == 0 ? "has-no-rail" : null)">
+                                    <article class="focus-avatar-card @(focused.Speaking ? "is-speaking" : null)" @key="focused.Id" data-peer-id="@focused.Id">
+                                        <span class="focus-avatar-glow" aria-hidden="true"></span>
+                                        <div class="focus-avatar">
+                                            <Avatar Name="@focused.Name" Tone="@focused.ColorIndex" Size="144" Speaking="@focused.Speaking" />
+                                            @if (focused.Speaking)
+                                            {
+                                                <span class="focus-speaking-ring" aria-hidden="true"></span>
+                                            }
+                                        </div>
+                                        <h2>@focused.Name</h2>
+                                        <p class="focus-card-status">
+                                            <Icon Name="@(focused.MicOn ? "mic" : "mic-off")" Size="15" />
+                                            @(focused.Speaking ? "Falando agora" : focused.MicOn ? "Microfone ligado" : "Em silêncio")
+                                        </p>
+                                        <p class="focus-card-hint">
+                                            Quando ligar a câmera ou compartilhar a tela, a transmissão aparece aqui.
+                                        </p>
+                                    </article>
+                                    @if (OtherShares.Count > 0)
+                                    {
+                                        <div class="focus-rail focus-rail-people" aria-label="Transmissões ao vivo">
+                                            @foreach (var share in OtherShares)
+                                            {
+                                                <div class="focus-rail-item" @key="share.Id">
+                                                    <RoomMediaTile Participant="share"
+                                                                    IsSelf="@(share.Id == Guest.Id)"
+                                                                    IsThumbnail="true"
+                                                                    FitOverride="_mediaFit"
+                                                                    OnFitChanged="SetMediaFitAsync"
+                                                                    OnFocus="FocusShare" />
+                                                </div>
+                                            }
+                                            <span class="focus-rail-hint">Clique para trocar o foco</span>
+                                        </div>
+                                    }
+                                </div>
+                            }
                         }
                         else
                         {
@@ -537,7 +587,13 @@ else
                                 @foreach (var person in _room.Participants)
                                 {
                                     var isSelf = person.Id == Guest.Id;
-                                    <article class="person-card @(person.Speaking ? "is-speaking" : null) @(isSelf ? "is-self" : null)" @key="person.Id">
+                                    <article class="person-card @(person.Speaking ? "is-speaking" : null) @(isSelf ? "is-self" : null)"
+                                             data-peer-id="@person.Id"
+                                             @key="person.Id"
+                                             role="button"
+                                             tabindex="0"
+                                             title="@($"Colocar {person.Name} em foco")"
+                                             @onclick="() => FocusParticipant(person.Id)">
                                         <span class="person-wave-bg" aria-hidden="true"></span>
                                         <div class="person-avatar">
                                             <Avatar Name="@person.Name" Tone="@person.ColorIndex" Size="96" Speaking="@person.Speaking" />
@@ -699,6 +755,18 @@ else
                             <span class="dock-control-icon"><Icon Name="users" Size="19" /></span>
                             <span class="dock-control-label">Pessoas</span>
                         </button>
+
+                        @if (!_nativeMedia)
+                        {
+                            <button type="button"
+                                    class="dock-control dock-pip-control"
+                                    @onclick="TogglePipAsync"
+                                    aria-label="Abrir picture-in-picture"
+                                    title="Picture-in-picture">
+                                <span class="dock-control-icon"><Icon Name="pip" Size="19" /></span>
+                                <span class="dock-control-label">PiP</span>
+                            </button>
+                        }
                     </div>
 
                     <button type="button" class="dock-leave" @onclick="RequestRoomExitAsync" disabled="@_leaveBusy" title="Sair da sala" aria-label="Sair da sala">
@@ -823,7 +891,13 @@ else
                             @foreach (var person in _room.Participants)
                             {
                                 var isSelf = person.Id == Guest.Id;
-                                <div class="people-row @(person.Speaking ? "is-speaking" : null)" @key="person.Id">
+                                <div class="people-row @(person.Speaking ? "is-speaking" : null)"
+                                     data-peer-id="@person.Id"
+                                     @key="person.Id"
+                                     role="button"
+                                     tabindex="0"
+                                     title="@($"Colocar {person.Name} em foco")"
+                                     @onclick="() => FocusParticipant(person.Id)">
                                     <div class="people-row-main">
                                         <div class="people-avatar-wrap">
                                             <Avatar Name="@person.Name" Tone="@person.ColorIndex" Size="39" Speaking="@person.Speaking" />
@@ -861,6 +935,7 @@ else
                                             <button type="button"
                                                     class="people-action @(_volumePeerId == person.Id ? "is-open" : null)"
                                                     @onclick="() => ToggleVolumePanel(person.Id)"
+                                                    @onclick:stopPropagation="true"
                                                     title="Ajustar volume"
                                                     aria-label="@($"Ajustar volume de {person.Name}")"
                                                     aria-expanded="@(_volumePeerId == person.Id ? "true" : "false")">
@@ -1917,41 +1992,69 @@ else
     {
         get
         {
-            var candidate = ShowSpotlight
-                ? FocusedShare
-                : Shares.Count == 1
-                    ? Shares[0]
-                    : null;
+            var candidate = FocusedParticipant
+                ?? (Shares.Count == 1 ? Shares[0] : null);
             return candidate is { ScreenOn: true, ScreenWithAudio: true } && candidate.Id != Guest.Id
                 ? candidate
                 : null;
         }
     }
 
-    private ParticipantView? FocusedShare
-    {
-        get
-        {
-            var shares = Shares;
-            if (shares.Count == 0)
-            {
-                return null;
-            }
+    private ParticipantView? FocusedParticipant =>
+        _focusedPeerId is null
+            ? null
+            : _room?.Participants.FirstOrDefault(p => p.Id == _focusedPeerId);
 
-            return shares.FirstOrDefault(p => p.Id == _focusedPeerId) ?? shares[0];
-        }
-    }
+    private ParticipantView? ActiveSpeaker =>
+        _room?.Participants.FirstOrDefault(p => p.Speaking);
+
+    private ParticipantView? PipTarget =>
+        FocusedParticipant
+        ?? ActiveSpeaker
+        ?? Shares.FirstOrDefault()
+        ?? _room?.Participants.FirstOrDefault();
+
+    private bool FocusedHasMedia =>
+        FocusedParticipant is { CameraOn: true } or { ScreenOn: true };
 
     private IReadOnlyList<ParticipantView> OtherShares
     {
         get
         {
-            var focused = FocusedShare;
-            return focused is null ? [] : Shares.Where(p => p.Id != focused.Id).ToArray();
+            var focused = FocusedParticipant;
+            return focused is null ? Shares : Shares.Where(p => p.Id != focused.Id).ToArray();
         }
     }
 
-    private bool ShowSpotlight => _focusedPeerId is not null && Shares.Count > 1 && Shares.Any(p => p.Id == _focusedPeerId);
+    private bool StageHasContent => FocusedParticipant is not null || Shares.Count > 0;
+
+    private bool ShowSpotlight => FocusedParticipant is not null;
+
+    private string FocusedStageSubtitle
+    {
+        get
+        {
+            var focused = FocusedParticipant;
+            if (focused is null)
+            {
+                return string.Empty;
+            }
+
+            if (focused.ScreenOn)
+            {
+                return $"{focused.Name} está compartilhando a tela.";
+            }
+
+            if (focused.CameraOn)
+            {
+                return $"{focused.Name} está com a câmera ligada.";
+            }
+
+            return focused.Speaking
+                ? $"{focused.Name} está falando."
+                : $"{focused.Name} está em foco.";
+        }
+    }
 
     private bool ShowCompanionAppOption =>
         !_nativeMedia &&
@@ -2746,9 +2849,10 @@ else
         }
 
         if (_focusedPeerId is not null &&
-            !room.Participants.Any(p => p.Id == _focusedPeerId && (p.CameraOn || p.ScreenOn)))
+            room.Participants.All(p => p.Id != _focusedPeerId))
         {
             _focusedPeerId = null;
+            _ = UpdatePipFocusAsync();
         }
 
         if (_volumePeerId is not null && room.Participants.All(p => p.Id != _volumePeerId))
@@ -3556,11 +3660,28 @@ else
     {
         try
         {
-            var opened = await JS.InvokeAsync<bool>("onda.toggleVideoPip");
+            var target = PipTarget;
+            if (target is null)
+            {
+                Toasts.Show("Ainda não há ninguém na sala para mostrar.", ToastKind.Info, 5000);
+                return;
+            }
+
+            var opened = await JS.InvokeAsync<bool>(
+                "onda.toggleParticipantPip",
+                new
+                {
+                    id = target.Id,
+                    name = target.Name,
+                    tone = target.ColorIndex,
+                    speaking = target.Speaking,
+                    follow = FocusedParticipant is null
+                });
+
             if (!opened)
             {
                 Toasts.Show(
-                    "O picture-in-picture não está disponível neste navegador ou não há vídeo ativo.",
+                    "O picture-in-picture não está disponível neste navegador.",
                     ToastKind.Info,
                     6000);
             }
@@ -3571,17 +3692,48 @@ else
         }
     }
 
-    private void FocusShare(string peerId)
+    private void FocusShare(string peerId) => FocusParticipant(peerId);
+
+    private void FocusParticipant(string peerId)
     {
-        if (Shares.Count <= 1)
+        if (string.IsNullOrWhiteSpace(peerId))
         {
             return;
         }
 
         _focusedPeerId = _focusedPeerId == peerId ? null : peerId;
+        _panelOpen = false;
+        _ = UpdatePipFocusAsync();
     }
 
-    private void ClearFocus() => _focusedPeerId = null;
+    private void ClearFocus()
+    {
+        _focusedPeerId = null;
+        _ = UpdatePipFocusAsync();
+    }
+
+    private async Task UpdatePipFocusAsync()
+    {
+        try
+        {
+            var target = PipTarget;
+            object? payload = target is null
+                ? null
+                : new
+                {
+                    id = target.Id,
+                    name = target.Name,
+                    tone = target.ColorIndex,
+                    speaking = target.Speaking,
+                    follow = _focusedPeerId is null
+                };
+            await JS.InvokeVoidAsync("onda.updatePipTarget", payload);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            // O circuito pode estar sendo encerrado durante a troca de foco.
+        }
+    }
 
     private async Task SetMediaFitAsync(bool contain)
     {
