@@ -4104,3 +4104,217 @@ html[data-theme="dark"] .audio-route-check {
 .audio-settings-section + .quality-note {
     margin-top: 1.15rem;
 }
+
+/* ---------- Compartilhar link (desktop) ---------- */
+.share-hub {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.share-hub-link {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: 0.9rem;
+    background: var(--paper);
+}
+
+.share-hub-link-icon {
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: 0.7rem;
+    background: rgba(205, 242, 124, 0.23);
+    color: #4d661d;
+}
+
+.share-hub-link-copy {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.12rem;
+    min-width: 0;
+}
+
+.share-hub-link-copy strong {
+    overflow: hidden;
+    color: var(--ink);
+    font-size: 0.8rem;
+    font-weight: 680;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.share-hub-link-copy span {
+    overflow: hidden;
+    color: var(--ink-muted);
+    font-size: 0.66rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.share-hub-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.32rem;
+    flex: 0 0 auto;
+    padding: 0.42rem 0.58rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--ink-soft);
+    font: inherit;
+    font-size: 0.64rem;
+    font-weight: 650;
+    cursor: pointer;
+}
+
+.share-hub-copy:hover {
+    border-color: rgba(105, 139, 35, 0.35);
+    background: rgba(205, 242, 124, 0.16);
+    color: var(--ink);
+}
+
+.share-hub-heading {
+    color: var(--ink-soft);
+    font-size: 0.65rem;
+    font-weight: 720;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.share-hub-targets {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.45rem;
+}
+
+.share-target {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.62rem 0.35rem;
+    border: 1px solid var(--line);
+    border-radius: 0.8rem;
+    background: var(--paper);
+    color: var(--ink-soft);
+    text-decoration: none;
+    transition: border-color 150ms ease, background-color 150ms ease, transform 150ms ease;
+}
+
+.share-target:hover {
+    border-color: rgba(105, 139, 35, 0.32);
+    background: rgba(205, 242, 124, 0.14);
+    transform: translateY(-1px);
+}
+
+.share-target strong {
+    font-size: 0.62rem;
+    font-weight: 650;
+    text-align: center;
+}
+
+.share-target-badge {
+    display: inline-grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.62rem;
+    color: #fff;
+    font-family: var(--font-display);
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+
+.share-target-whatsapp {
+    background: #25d366;
+}
+
+.share-target-telegram {
+    background: #229ed9;
+}
+
+.share-target-email {
+    background: #64748b;
+}
+
+.share-target-facebook {
+    background: #1877f2;
+}
+
+.share-target-x {
+    background: #111;
+}
+
+.share-target-linkedin {
+    background: #0a66c2;
+}
+
+.share-hub-native {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    width: 100%;
+    padding: 0.65rem;
+    border: 1px solid var(--line);
+    border-radius: 0.85rem;
+    background: var(--paper);
+    color: var(--ink);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.share-hub-native:hover {
+    border-color: rgba(105, 139, 35, 0.35);
+    background: rgba(205, 242, 124, 0.12);
+}
+
+.share-hub-native-icon {
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 0.65rem;
+    background: rgba(205, 242, 124, 0.22);
+    color: #4d661d;
+}
+
+.share-hub-native-copy {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.08rem;
+    min-width: 0;
+}
+
+.share-hub-native-copy strong {
+    font-size: 0.72rem;
+    font-weight: 650;
+}
+
+.share-hub-native-copy small {
+    color: var(--ink-muted);
+    font-size: 0.6rem;
+}
+
+.share-hub-note {
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: 0.6rem;
+    line-height: 1.45;
+}
+
+@media (max-width: 420px) {
+    .share-hub-targets {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}

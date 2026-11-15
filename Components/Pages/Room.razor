@@ -1466,6 +1466,68 @@ else
     </div>
 </Modal>
 
+<Modal IsOpen="_shareHubOpen"
+       Title="Compartilhar link"
+       Eyebrow="CONVITE"
+       Wide="true"
+       OnClose="CloseShareHub">
+    <div class="share-hub">
+        <div class="share-hub-link">
+            <span class="share-hub-link-icon"><Icon Name="link" Size="20" /></span>
+            <span class="share-hub-link-copy">
+                <strong>@(_room?.Name ?? "Onda")</strong>
+                <span>@RoomUrl</span>
+            </span>
+            <button type="button" class="share-hub-copy" @onclick="CopyRoomLinkAsync">
+                <Icon Name="copy" Size="15" />
+                <span>Copiar</span>
+            </button>
+        </div>
+
+        <span class="share-hub-heading">Compartilhar usando</span>
+        <div class="share-hub-targets">
+            <a class="share-target" href="@WhatsAppShareUrl" target="_blank" rel="noreferrer">
+                <span class="share-target-badge share-target-whatsapp">WA</span>
+                <strong>WhatsApp</strong>
+            </a>
+            <a class="share-target" href="@TelegramShareUrl" target="_blank" rel="noreferrer">
+                <span class="share-target-badge share-target-telegram">TG</span>
+                <strong>Telegram</strong>
+            </a>
+            <a class="share-target" href="@EmailShareUrl">
+                <span class="share-target-badge share-target-email">@@</span>
+                <strong>E-mail</strong>
+            </a>
+            <a class="share-target" href="@FacebookShareUrl" target="_blank" rel="noreferrer">
+                <span class="share-target-badge share-target-facebook">f</span>
+                <strong>Facebook</strong>
+            </a>
+            <a class="share-target" href="@XShareUrl" target="_blank" rel="noreferrer">
+                <span class="share-target-badge share-target-x">X</span>
+                <strong>X</strong>
+            </a>
+            <a class="share-target" href="@LinkedInShareUrl" target="_blank" rel="noreferrer">
+                <span class="share-target-badge share-target-linkedin">in</span>
+                <strong>LinkedIn</strong>
+            </a>
+        </div>
+
+        <button type="button" class="share-hub-native" @onclick="ShareViaWindowsAsync">
+            <span class="share-hub-native-icon"><Icon Name="share" Size="20" /></span>
+            <span class="share-hub-native-copy">
+                <strong>Mais aplicativos do Windows</strong>
+                <small>Abrir a folha de compartilhamento do sistema.</small>
+            </span>
+            <Icon Name="external" Size="16" />
+        </button>
+
+        <p class="share-hub-note">
+            O Windows mostra os aplicativos instalados no computador. Os contatos recentes
+            do navegador não ficam disponíveis para o aplicativo desktop.
+        </p>
+    </div>
+</Modal>
+
 <Modal IsOpen="_showQualityDialog"
        Title="Qualidade de tela e câmera"
        Eyebrow="VÍDEO & TELA"
@@ -1794,6 +1856,7 @@ else
     private string? _nameError;
 
     private bool _showQualityDialog;
+    private bool _shareHubOpen;
     private bool _showAudioRouteDialog;
     private bool _showExitDialog;
     private bool _showRefreshDialog;
@@ -4087,9 +4150,55 @@ else
         await CopyRoomLinkAsync();
     }
 
+    private string ShareMessage =>
+        $"Entre na sala {_room?.Name ?? "Onda"} no Onda. {RoomUrl}";
+
+    private string ShareMessageEncoded => Uri.EscapeDataString(ShareMessage);
+
+    private string ShareUrlEncoded => Uri.EscapeDataString(RoomUrl);
+
+    private string ShareSubjectEncoded =>
+        Uri.EscapeDataString($"Convite para {_room?.Name ?? "Onda"}");
+
+    private string WhatsAppShareUrl => $"https://wa.me/?text={ShareMessageEncoded}";
+
+    private string TelegramShareUrl =>
+        $"https://t.me/share/url?url={ShareUrlEncoded}&text={ShareMessageEncoded}";
+
+    private string EmailShareUrl =>
+        $"mailto:?subject={ShareSubjectEncoded}&body={ShareMessageEncoded}";
+
+    private string FacebookShareUrl =>
+        $"https://www.facebook.com/sharer/sharer.php?u={ShareUrlEncoded}";
+
+    private string XShareUrl =>
+        $"https://twitter.com/intent/tweet?url={ShareUrlEncoded}&text={ShareMessageEncoded}";
+
+    private string LinkedInShareUrl =>
+        $"https://www.linkedin.com/sharing/share-offsite/?url={ShareUrlEncoded}";
+
     private async Task ShareRoomLinkFromMenuAsync()
     {
         CloseRoomMenus();
+        if (_installDesktopApp)
+        {
+            _shareHubOpen = true;
+            StateHasChanged();
+            return;
+        }
+
+        await ShareRoomLinkAsync();
+    }
+
+    private void CloseShareHub()
+    {
+        _shareHubOpen = false;
+    }
+
+    private async Task ShareViaWindowsAsync()
+    {
+        _shareHubOpen = false;
+        StateHasChanged();
         await ShareRoomLinkAsync();
     }
 
