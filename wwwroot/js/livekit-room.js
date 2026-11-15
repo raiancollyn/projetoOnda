@@ -74,13 +74,17 @@ let inputDeviceId = storedAudioPreferences.inputDeviceId;
 let outputDeviceId = storedAudioPreferences.outputDeviceId;
 let inputVolume = storedAudioPreferences.inputVolume;
 let outputVolume = storedAudioPreferences.outputVolume;
+let noiseSuppression = storedAudioPreferences.noiseSuppression;
+let echoCancellation = storedAudioPreferences.echoCancellation;
 
 function readAudioPreferences() {
     const fallback = {
         inputDeviceId: "",
         outputDeviceId: "",
         inputVolume: 1,
-        outputVolume: 1
+        outputVolume: 1,
+        noiseSuppression: true,
+        echoCancellation: true
     };
 
     try {
@@ -98,7 +102,9 @@ function readAudioPreferences() {
             inputDeviceId: typeof parsed.inputDeviceId === "string" ? parsed.inputDeviceId : "",
             outputDeviceId: typeof parsed.outputDeviceId === "string" ? parsed.outputDeviceId : "",
             inputVolume: clamp(parsed.inputVolume),
-            outputVolume: clamp(parsed.outputVolume)
+            outputVolume: clamp(parsed.outputVolume),
+            noiseSuppression: parsed.noiseSuppression !== false,
+            echoCancellation: parsed.echoCancellation !== false
         };
     } catch {
         return fallback;
@@ -111,7 +117,9 @@ function persistAudioPreferences() {
             inputDeviceId,
             outputDeviceId,
             inputVolume,
-            outputVolume
+            outputVolume,
+            noiseSuppression,
+            echoCancellation
         }));
     } catch {
         // Private mode may block persistence.
@@ -265,8 +273,8 @@ export async function initialize(ref, roomCode, guestId, config = {}) {
         disconnectOnPageLeave: true,
         stopLocalTrackOnUnpublish: true,
         audioCaptureDefaults: {
-            echoCancellation: true,
-            noiseSuppression: true,
+            echoCancellation,
+            noiseSuppression,
             autoGainControl: true
         },
         videoCaptureDefaults: {
@@ -721,8 +729,8 @@ async function playAllRemoteAudio() {
 
 async function createMicrophoneTrackWithFallback() {
     const baseOptions = {
-        echoCancellation: true,
-        noiseSuppression: true,
+        echoCancellation,
+        noiseSuppression,
         autoGainControl: true
     };
 
@@ -891,8 +899,8 @@ export async function switchAudioInput(deviceId) {
 
     try {
         const nextTrack = await createLocalAudioTrack({
-            echoCancellation: true,
-            noiseSuppression: true,
+            echoCancellation,
+            noiseSuppression,
             autoGainControl: true,
             deviceId: { exact: deviceId }
         });
@@ -930,6 +938,23 @@ export async function switchAudioInput(deviceId) {
         notifyError("microphone", "Não foi possível trocar o microfone.");
         return false;
     }
+}
+
+export async function setAudioProcessing(noise, echo) {
+    noiseSuppression = Boolean(noise);
+    echoCancellation = Boolean(echo);
+    persistAudioPreferences();
+
+    const track = local.micTrack?.mediaStreamTrack;
+    if (track && typeof track.applyConstraints === "function") {
+        try {
+            await track.applyConstraints({ noiseSuppression, echoCancellation });
+        } catch (error) {
+            console.warn("Onda: could not apply audio processing live", error);
+        }
+    }
+
+    return true;
 }
 
 export function setAudioOutputVolume(value) {
@@ -1015,6 +1040,8 @@ export async function getAudioSettings() {
         outputDeviceId,
         inputVolume,
         outputVolume,
+        noiseSuppression,
+        echoCancellation,
         canSelectOutput: typeof HTMLMediaElement !== "undefined" &&
             typeof HTMLMediaElement.prototype.setSinkId === "function"
     };

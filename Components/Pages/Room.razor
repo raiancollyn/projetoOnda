@@ -1047,8 +1047,8 @@ else
                     </span>
                 </span>
                 <input type="checkbox"
-                       checked="@_nativeNoiseSuppression"
-                       @onchange="ToggleNativeNoiseSuppressionAsync"
+                       checked="@_noiseSuppression"
+                       @onchange="ToggleNoiseSuppressionAsync"
                        disabled="@_audioProcessingBusy"
                        aria-label="Ativar ou desativar supressão de ruído" />
             </label>
@@ -1061,8 +1061,8 @@ else
                     </span>
                 </span>
                 <input type="checkbox"
-                       checked="@_nativeEchoCancellation"
-                       @onchange="ToggleNativeEchoCancellationAsync"
+                       checked="@_echoCancellation"
+                       @onchange="ToggleEchoCancellationAsync"
                        disabled="@_audioProcessingBusy"
                        aria-label="Ativar ou desativar cancelamento de eco" />
             </label>
@@ -1145,6 +1145,44 @@ else
                        @bind:after="ApplyAudioOutputVolumeAsync" />
                 <span>@_audioOutputVolume%</span>
             </div>
+        </div>
+
+        <div class="audio-settings-section">
+            <div class="audio-settings-heading">
+                <span class="audio-route-icon"><Icon Name="mic" Size="18" /></span>
+                <div>
+                    <strong>Processamento de voz</strong>
+                    <small>Aplicado ao microfone da chamada</small>
+                </div>
+            </div>
+            <label class="camera-toggle-row">
+                <span>
+                    <Icon Name="wave" Size="17" />
+                    <span>
+                        <strong>Supressão de ruído</strong>
+                        <small>Reduz ruídos constantes como ventilador e trânsito.</small>
+                    </span>
+                </span>
+                <input type="checkbox"
+                       checked="@_noiseSuppression"
+                       @onchange="ToggleNoiseSuppressionAsync"
+                       disabled="@_audioProcessingBusy"
+                       aria-label="Ativar ou desativar supressão de ruído" />
+            </label>
+            <label class="camera-toggle-row">
+                <span>
+                    <Icon Name="volume-off" Size="17" />
+                    <span>
+                        <strong>Cancelamento de eco</strong>
+                        <small>Evita que o som da sala volte pelo seu microfone.</small>
+                    </span>
+                </span>
+                <input type="checkbox"
+                       checked="@_echoCancellation"
+                       @onchange="ToggleEchoCancellationAsync"
+                       disabled="@_audioProcessingBusy"
+                       aria-label="Ativar ou desativar cancelamento de eco" />
+            </label>
         </div>
 
         <p class="quality-note">
@@ -1633,8 +1671,8 @@ else
     private bool _exitGuardStarted;
     private bool _audioRouteBusy;
     private bool _audioNativeMode;
-    private bool _nativeNoiseSuppression = true;
-    private bool _nativeEchoCancellation = true;
+    private bool _noiseSuppression = true;
+    private bool _echoCancellation = true;
     private bool _audioProcessingBusy;
     private bool _audioCanSelectOutput;
     private IReadOnlyList<NativeAudioDeviceView> _audioRouteDevices = [];
@@ -2143,8 +2181,8 @@ else
                         nativeMicOn = await JS.InvokeAsync<bool>("onda.getNativeMic");
                         nativeCameraOn = await JS.InvokeAsync<bool>("onda.getNativeCamera");
                         nativeScreenOn = await JS.InvokeAsync<bool>("onda.getNativeScreenShare");
-                        _nativeNoiseSuppression = await JS.InvokeAsync<bool>("onda.getNativeNoiseSuppression");
-                        _nativeEchoCancellation = await JS.InvokeAsync<bool>("onda.getNativeEchoCancellation");
+                        _noiseSuppression = await JS.InvokeAsync<bool>("onda.getNativeNoiseSuppression");
+                        _echoCancellation = await JS.InvokeAsync<bool>("onda.getNativeEchoCancellation");
                     }
                     catch (Exception ex) when (ex is JSException or JSDisconnectedException)
                     {
@@ -4009,21 +4047,21 @@ else
         }
     }
 
-    private async Task ToggleNativeNoiseSuppressionAsync(ChangeEventArgs args)
+    private async Task ToggleNoiseSuppressionAsync(ChangeEventArgs args)
     {
-        _nativeNoiseSuppression = args.Value is true;
-        await ApplyNativeAudioProcessingAsync();
+        _noiseSuppression = args.Value is true;
+        await ApplyAudioProcessingAsync();
     }
 
-    private async Task ToggleNativeEchoCancellationAsync(ChangeEventArgs args)
+    private async Task ToggleEchoCancellationAsync(ChangeEventArgs args)
     {
-        _nativeEchoCancellation = args.Value is true;
-        await ApplyNativeAudioProcessingAsync();
+        _echoCancellation = args.Value is true;
+        await ApplyAudioProcessingAsync();
     }
 
-    private async Task ApplyNativeAudioProcessingAsync()
+    private async Task ApplyAudioProcessingAsync()
     {
-        if (!_nativeMedia || _audioProcessingBusy)
+        if (_audioProcessingBusy || (!_nativeMedia && _jsModule is null))
         {
             return;
         }
@@ -4032,10 +4070,15 @@ else
         StateHasChanged();
         try
         {
-            var applied = await JS.InvokeAsync<bool>(
-                "onda.setNativeAudioProcessing",
-                _nativeNoiseSuppression,
-                _nativeEchoCancellation);
+            var applied = _nativeMedia
+                ? await JS.InvokeAsync<bool>(
+                    "onda.setNativeAudioProcessing",
+                    _noiseSuppression,
+                    _echoCancellation)
+                : await _jsModule!.InvokeAsync<bool>(
+                    "setAudioProcessing",
+                    _noiseSuppression,
+                    _echoCancellation);
             if (!applied)
             {
                 Toasts.Show(
@@ -4091,6 +4134,8 @@ else
             _audioInputVolume = (int)Math.Round(Math.Clamp(settings?.InputVolume ?? 1, 0, 1) * 100);
             _audioOutputVolume = (int)Math.Round(Math.Clamp(settings?.OutputVolume ?? 1, 0, 1) * 100);
             _audioCanSelectOutput = settings?.CanSelectOutput ?? false;
+            _noiseSuppression = settings?.NoiseSuppression ?? true;
+            _echoCancellation = settings?.EchoCancellation ?? true;
         }
         catch (Exception ex) when (ex is JSException or JSDisconnectedException)
         {
@@ -4511,7 +4556,9 @@ else
         string? OutputDeviceId,
         double InputVolume,
         double OutputVolume,
-        bool CanSelectOutput);
+        bool CanSelectOutput,
+        bool NoiseSuppression,
+        bool EchoCancellation);
 
     private sealed record CameraOptionsView(
         IReadOnlyList<CameraDeviceView> Devices,
