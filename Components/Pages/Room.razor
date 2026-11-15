@@ -622,7 +622,7 @@ else
                         }
 
                         <button type="button"
-                                class="dock-control @(_localCameraOn ? "is-on" : "is-off")"
+                                class="dock-control @(_localCameraOn ? "is-stop" : null)"
                                 @onclick="ToggleCameraAsync"
                                 disabled="@(!_jsReady || _actionPending is not null)"
                                 aria-pressed="@(_localCameraOn ? "true" : "false")"
@@ -655,7 +655,7 @@ else
                         }
 
                         <button type="button"
-                                class="dock-control dock-screen-control @(_localScreenOn ? "is-active" : "is-off")"
+                                class="dock-control dock-screen-control @(_localScreenOn ? "is-stop" : null)"
                                 @onclick="ToggleScreenAsync"
                                 disabled="@(!_jsReady || _actionPending is not null)"
                                 aria-pressed="@(_localScreenOn ? "true" : "false")"

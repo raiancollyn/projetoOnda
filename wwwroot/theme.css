@@ -918,6 +918,11 @@ html[data-theme="light"] .dock-control.is-off .dock-control-icon {
     color: #a53426;
 }
 
+html[data-theme="light"] .dock-control.is-stop .dock-control-icon {
+    background: rgba(255, 111, 89, 0.13);
+    color: #a53426;
+}
+
 html[data-theme="light"] .dock-control.is-active .dock-control-icon,
 html[data-theme="light"] .dock-control.is-active-soft .dock-control-icon {
     background: var(--lime);

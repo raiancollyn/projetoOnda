@@ -1747,6 +1747,11 @@ html[data-theme="light"] .dock-signal i {
     color: #ffb1a4;
 }
 
+.dock-control.is-stop .dock-control-icon {
+    background: rgba(255, 111, 89, 0.12);
+    color: #ffb1a4;
+}
+
 .dock-control.is-active .dock-control-icon,
 .dock-control.is-active-soft .dock-control-icon {
     background: var(--lime);
