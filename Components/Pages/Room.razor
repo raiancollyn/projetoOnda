@@ -1511,20 +1511,6 @@ else
                 <strong>LinkedIn</strong>
             </a>
         </div>
-
-        <a class="share-hub-native" href="@ShareBrowserUrl" target="_blank" rel="noreferrer">
-            <span class="share-hub-native-icon"><Icon Name="share" Size="20" /></span>
-            <span class="share-hub-native-copy">
-                <strong>Abrir no navegador</strong>
-                <small>Usar os contatos e aplicativos da central do Chrome ou Edge.</small>
-            </span>
-            <Icon Name="external" Size="16" />
-        </a>
-
-        <p class="share-hub-note">
-            A folha nativa do Windows não está disponível de forma estável no aplicativo
-            desktop. O navegador abre a central completa de compartilhamento do sistema.
-        </p>
     </div>
 </Modal>
 
@@ -4176,21 +4162,6 @@ else
 
     private string LinkedInShareUrl =>
         $"https://www.linkedin.com/sharing/share-offsite/?url={ShareUrlEncoded}";
-
-    private string ShareBrowserUrl
-    {
-        get
-        {
-            var builder = new UriBuilder(new Uri(RoomUrl))
-            {
-                Path = "/compartilhar",
-                Query = $"url={ShareUrlEncoded}"
-                    + $"&title={Uri.EscapeDataString(_room?.Name ?? "Onda")}"
-                    + $"&text={ShareMessageEncoded}"
-            };
-            return builder.Uri.ToString();
-        }
-    }
 
     private async Task ShareRoomLinkFromMenuAsync()
     {
