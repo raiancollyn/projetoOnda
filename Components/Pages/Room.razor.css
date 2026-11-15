@@ -4531,3 +4531,7 @@ html[data-theme="light"] .focus-card-hint {
     background: rgba(205, 242, 124, 0.1);
     color: var(--lime);
 }
+.stage-pin-control:disabled {
+    opacity: 0.42;
+    cursor: not-allowed;
+}

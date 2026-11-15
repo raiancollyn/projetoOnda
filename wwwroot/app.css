@@ -911,3 +911,26 @@ html.onda-pip .spotlight-strip {
 html.onda-pip .media-placeholder span {
     display: none;
 }
+.pip-pinned-stage {
+    display: none;
+}
+
+html.onda-pip .pip-pinned-stage {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: block;
+    overflow: hidden;
+    background: #07110e;
+}
+
+html.onda-pip .pip-pinned-stage .media-tile-shell {
+    display: block !important;
+    width: 100%;
+    height: 100%;
+}
+
+html.onda-pip .pip-pinned-stage .focus-avatar-card {
+    width: 100%;
+    height: 100%;
+}
