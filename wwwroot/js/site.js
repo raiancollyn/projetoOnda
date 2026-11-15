@@ -2187,6 +2187,205 @@
         }
     }
 
+    const notificationStorageKey = "onda.notifications";
+    let notificationSettings = readNotificationSettings();
+    let notificationAudioContext = null;
+
+    function readNotificationSettings() {
+        const defaults = {
+            joinSound: true,
+            leaveSound: true,
+            messageSound: true,
+            chatNotifications: false
+        };
+
+        try {
+            const stored = JSON.parse(localStorage.getItem(notificationStorageKey) || "null");
+            if (!stored || typeof stored !== "object") {
+                return defaults;
+            }
+
+            return {
+                joinSound: stored.joinSound !== false,
+                leaveSound: stored.leaveSound !== false,
+                messageSound: stored.messageSound !== false,
+                chatNotifications: stored.chatNotifications === true
+            };
+        } catch {
+            return defaults;
+        }
+    }
+
+    function persistNotificationSettings() {
+        try {
+            localStorage.setItem(notificationStorageKey, JSON.stringify(notificationSettings));
+        } catch {
+            // Private mode may block persistence.
+        }
+    }
+
+    function getNotificationSettings() {
+        return JSON.stringify(notificationSettings);
+    }
+
+    async function saveNotificationSettings(serialized) {
+        let incoming = serialized;
+        if (typeof serialized === "string") {
+            try {
+                incoming = JSON.parse(serialized);
+            } catch {
+                incoming = null;
+            }
+        }
+
+        if (incoming && typeof incoming === "object") {
+            notificationSettings = {
+                joinSound: incoming.joinSound !== false,
+                leaveSound: incoming.leaveSound !== false,
+                messageSound: incoming.messageSound !== false,
+                chatNotifications: incoming.chatNotifications === true
+            };
+        }
+
+        let permission = "unsupported";
+        const nativePlugin = nativeMediaPlugin();
+        const nativeNotifications = Boolean(nativePlugin?.notifyChat);
+        if (nativeNotifications) {
+            if (notificationSettings.chatNotifications) {
+                permission = "requested";
+                try {
+                    const result = await nativePlugin.requestNotificationPermission();
+                    permission = result?.granted ? "granted" : "requested";
+                } catch {
+                    permission = "requested";
+                }
+            }
+        } else if ("Notification" in window) {
+            permission = Notification.permission;
+            if (notificationSettings.chatNotifications) {
+                if (permission === "default") {
+                    try {
+                        permission = await Notification.requestPermission();
+                    } catch {
+                        permission = "denied";
+                    }
+                }
+
+                if (permission !== "granted") {
+                    notificationSettings.chatNotifications = false;
+                }
+            }
+        } else {
+            notificationSettings.chatNotifications = false;
+        }
+
+        persistNotificationSettings();
+        return JSON.stringify({
+            ...notificationSettings,
+            permission
+        });
+    }
+
+    function playRoomSound(kind) {
+        const enabled = kind === "join"
+            ? notificationSettings.joinSound
+            : kind === "leave"
+                ? notificationSettings.leaveSound
+                : kind === "message"
+                    ? notificationSettings.messageSound
+                    : false;
+        if (!enabled) {
+            return;
+        }
+
+        const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextCtor) {
+            return;
+        }
+
+        try {
+            notificationAudioContext ??= new AudioContextCtor();
+            const context = notificationAudioContext;
+            const play = () => {
+                const now = context.currentTime + 0.01;
+                const notes = kind === "join"
+                    ? [[520, 0, 0.11], [720, 0.09, 0.13]]
+                    : kind === "leave"
+                        ? [[470, 0, 0.1], [340, 0.08, 0.14]]
+                        : [[660, 0, 0.09]];
+
+                for (const [frequency, offset, duration] of notes) {
+                    const start = now + offset;
+                    const oscillator = context.createOscillator();
+                    const gain = context.createGain();
+                    oscillator.type = "sine";
+                    oscillator.frequency.setValueAtTime(frequency, start);
+                    gain.gain.setValueAtTime(0.0001, start);
+                    gain.gain.exponentialRampToValueAtTime(0.035, start + 0.015);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+                    oscillator.connect(gain);
+                    gain.connect(context.destination);
+                    oscillator.start(start);
+                    oscillator.stop(start + duration + 0.02);
+                }
+            };
+
+            if (context.state === "suspended") {
+                void context.resume().then(play).catch(() => {});
+            } else {
+                play();
+            }
+        } catch {
+            // Audio effects are optional.
+        }
+    }
+
+    function showChatNotification(sender, text, roomName, roomCode) {
+        if (!notificationSettings.chatNotifications) {
+            return;
+        }
+
+        if (!document.hidden && document.hasFocus()) {
+            return;
+        }
+
+        const message = String(text || "").trim();
+        if (!message) {
+            return;
+        }
+
+        const nativePlugin = nativeMediaPlugin();
+        if (nativePlugin?.notifyChat) {
+            void nativePlugin.notifyChat({
+                sender: String(sender || "Alguém"),
+                text: message,
+                roomId: String(roomCode || "")
+            }).catch(() => {});
+            return;
+        }
+
+        if (!("Notification" in window) || Notification.permission !== "granted") {
+            return;
+        }
+
+        try {
+            const notification = new Notification(
+                `${String(sender || "Alguém")} · ${String(roomName || "Onda")}`,
+                {
+                    body: message.length > 180 ? `${message.slice(0, 177)}...` : message,
+                    icon: "/og/onda-share.png",
+                    tag: "onda-chat",
+                    silent: true
+                });
+            notification.onclick = () => {
+                window.focus();
+                notification.close();
+            };
+        } catch {
+            // The platform may reject notifications even after permission.
+        }
+    }
+
     window.onda = Object.freeze({
         copyText,
         scrollToBottom,
@@ -2213,6 +2412,10 @@
         startPresenceHeartbeat,
         stopPresenceHeartbeat,
         registerVisibilityListener,
+        getNotificationSettings,
+        saveNotificationSettings,
+        playRoomSound,
+        showChatNotification,
         isNativeMobile,
         startNativeCall,
         stopNativeCall,

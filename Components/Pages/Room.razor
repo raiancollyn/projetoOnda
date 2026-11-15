@@ -306,6 +306,14 @@ else
                                     <small>Tela, câmera e transmissão</small>
                                 </span>
                             </button>
+
+                            <button type="button" class="room-menu-item" role="menuitem" @onclick="OpenNotificationSettingsFromMenuAsync">
+                                <span class="room-menu-item-icon"><Icon Name="bell" Size="17" /></span>
+                                <span class="room-menu-item-copy">
+                                    <strong>Notificações</strong>
+                                    <small>Sons e mensagens fora de foco</small>
+                                </span>
+                            </button>
                         </div>
                     }
                 </div>
@@ -1191,6 +1199,97 @@ else
     }
 </Modal>
 
+<Modal IsOpen="_showNotificationsDialog"
+       Title="Notificações"
+       Eyebrow="ALERTAS"
+       OnClose="CloseNotificationSettings">
+    <div class="audio-settings-section">
+        <div class="audio-settings-heading">
+            <span class="audio-route-icon"><Icon Name="wave" Size="18" /></span>
+            <div>
+                <strong>Sons da sala</strong>
+                <small>Efeitos sutis durante a chamada</small>
+            </div>
+        </div>
+        <label class="camera-toggle-row">
+            <span>
+                <Icon Name="user-plus" Size="17" />
+                <span>
+                    <strong>Entrada de participante</strong>
+                    <small>Toca quando alguém entra na sala.</small>
+                </span>
+            </span>
+            <input type="checkbox"
+                   checked="@_joinSoundEnabled"
+                   @onchange="ToggleJoinSoundAsync"
+                   disabled="@_notificationSettingsBusy"
+                   aria-label="Ativar som de entrada de participante" />
+        </label>
+        <label class="camera-toggle-row">
+            <span>
+                <Icon Name="arrow-left" Size="17" />
+                <span>
+                    <strong>Saída de participante</strong>
+                    <small>Toca quando alguém sai da sala.</small>
+                </span>
+            </span>
+            <input type="checkbox"
+                   checked="@_leaveSoundEnabled"
+                   @onchange="ToggleLeaveSoundAsync"
+                   disabled="@_notificationSettingsBusy"
+                   aria-label="Ativar som de saída de participante" />
+        </label>
+        <label class="camera-toggle-row">
+            <span>
+                <Icon Name="chat" Size="17" />
+                <span>
+                    <strong>Mensagem no chat</strong>
+                    <small>Toca quando outra pessoa envia uma mensagem.</small>
+                </span>
+            </span>
+            <input type="checkbox"
+                   checked="@_messageSoundEnabled"
+                   @onchange="ToggleMessageSoundAsync"
+                   disabled="@_notificationSettingsBusy"
+                   aria-label="Ativar som de mensagem no chat" />
+        </label>
+    </div>
+
+    <div class="audio-settings-section">
+        <div class="audio-settings-heading">
+            <span class="audio-route-icon"><Icon Name="bell" Size="18" /></span>
+            <div>
+                <strong>Notificações do sistema</strong>
+                <small>Quando o Onda não está em foco</small>
+            </div>
+        </div>
+        <label class="camera-toggle-row">
+            <span>
+                <Icon Name="chat" Size="17" />
+                <span>
+                    <strong>Mensagens no chat</strong>
+                    <small>Mostra o remetente e a mensagem fora da janela.</small>
+                </span>
+            </span>
+            <input type="checkbox"
+                   checked="@_chatNotificationsEnabled"
+                   @onchange="ToggleChatNotificationsAsync"
+                   disabled="@_notificationSettingsBusy"
+                   aria-label="Ativar notificações de mensagens no chat" />
+        </label>
+        <p class="quality-note notification-permission-note">
+            O navegador ou aplicativo desktop precisa de permissão para mostrar notificações.
+            No Android, essa opção depende do suporte da WebView.
+        </p>
+    </div>
+
+    <div class="modal-actions modal-actions-end">
+        <button type="button" class="button button-ghost" @onclick="CloseNotificationSettings">
+            Fechar
+        </button>
+    </div>
+</Modal>
+
 <Modal IsOpen="_showNameDialog"
        Title="Como você quer aparecer?"
        Eyebrow="SEU NOME"
@@ -1629,6 +1728,12 @@ else
     private string? _actionPending;
     private bool _settingsMenuOpen;
     private bool _shareMenuOpen;
+    private bool _showNotificationsDialog;
+    private bool _notificationSettingsBusy;
+    private bool _joinSoundEnabled = true;
+    private bool _leaveSoundEnabled = true;
+    private bool _messageSoundEnabled = true;
+    private bool _chatNotificationsEnabled;
 
     private bool _localMicOn;
     private bool _hasMic;
@@ -2581,6 +2686,10 @@ else
 
     private void ApplyRoom(RoomView room, bool initial)
     {
+        var previousIds = initial || _room is null
+            ? null
+            : _room.Participants.Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
+
         _room = room;
         _self = room.Participants.FirstOrDefault(p => p.Id == Guest.Id);
 
@@ -2605,6 +2714,20 @@ else
         {
             _unreadChat = 0;
             return;
+        }
+
+        if (previousIds is not null)
+        {
+            var currentIds = room.Participants.Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
+            if (currentIds.Except(previousIds).Any(id => id != Guest.Id))
+            {
+                PlayRoomSound("join");
+            }
+
+            if (previousIds.Except(currentIds).Any(id => id != Guest.Id))
+            {
+                PlayRoomSound("leave");
+            }
         }
 
         if (_self is null)
@@ -2690,6 +2813,7 @@ else
 
     private void ApplyChatMessages(IReadOnlyList<ChatMessageView> messages)
     {
+        var hadCursor = !string.IsNullOrEmpty(_lastMessageId);
         var newMessages = new List<ChatMessageView>();
         if (messages.Count > 0)
         {
@@ -2722,6 +2846,18 @@ else
         var unreadCandidates = newMessages
             .Where(m => !m.IsSystem && m.SenderId != Guest.Id)
             .Count();
+
+        if (hadCursor)
+        {
+            var incoming = newMessages
+                .Where(m => !m.IsSystem && m.SenderId != Guest.Id)
+                .ToArray();
+            if (incoming.Length > 0)
+            {
+                PlayRoomSound("message");
+                NotifyChat(incoming[^1]);
+            }
+        }
 
         if (unreadCandidates > 0)
         {
@@ -3717,6 +3853,148 @@ else
         _shareMenuOpen = false;
     }
 
+    private async Task OpenNotificationSettingsFromMenuAsync()
+    {
+        CloseRoomMenus();
+        try
+        {
+            var json = await JS.InvokeAsync<string>("onda.getNotificationSettings");
+            var loaded = JsonSerializer.Deserialize<NotificationSettingsView>(json, QualityJsonOptions);
+            if (loaded is not null)
+            {
+                _joinSoundEnabled = loaded.JoinSound;
+                _leaveSoundEnabled = loaded.LeaveSound;
+                _messageSoundEnabled = loaded.MessageSound;
+                _chatNotificationsEnabled = loaded.ChatNotifications;
+            }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or JsonException)
+        {
+            // Keep the defaults if preferences cannot be read.
+        }
+
+        _showNotificationsDialog = true;
+    }
+
+    private void CloseNotificationSettings()
+    {
+        _showNotificationsDialog = false;
+    }
+
+    private async Task ToggleJoinSoundAsync(ChangeEventArgs args)
+    {
+        _joinSoundEnabled = args.Value is true;
+        await SaveNotificationSettingsAsync();
+    }
+
+    private async Task ToggleLeaveSoundAsync(ChangeEventArgs args)
+    {
+        _leaveSoundEnabled = args.Value is true;
+        await SaveNotificationSettingsAsync();
+    }
+
+    private async Task ToggleMessageSoundAsync(ChangeEventArgs args)
+    {
+        _messageSoundEnabled = args.Value is true;
+        await SaveNotificationSettingsAsync();
+    }
+
+    private async Task ToggleChatNotificationsAsync(ChangeEventArgs args)
+    {
+        _chatNotificationsEnabled = args.Value is true;
+        await SaveNotificationSettingsAsync();
+    }
+
+    private async Task SaveNotificationSettingsAsync()
+    {
+        if (_notificationSettingsBusy)
+        {
+            return;
+        }
+
+        _notificationSettingsBusy = true;
+        StateHasChanged();
+        try
+        {
+            var request = new NotificationSettingsRequest(
+                _joinSoundEnabled,
+                _leaveSoundEnabled,
+                _messageSoundEnabled,
+                _chatNotificationsEnabled);
+            var json = JsonSerializer.Serialize(request, QualityJsonOptions);
+            var response = await JS.InvokeAsync<string>("onda.saveNotificationSettings", json);
+            var applied = JsonSerializer.Deserialize<NotificationSettingsView>(response, QualityJsonOptions);
+            if (applied is not null)
+            {
+                _joinSoundEnabled = applied.JoinSound;
+                _leaveSoundEnabled = applied.LeaveSound;
+                _messageSoundEnabled = applied.MessageSound;
+                _chatNotificationsEnabled = applied.ChatNotifications;
+                if (request.ChatNotifications &&
+                    !applied.ChatNotifications &&
+                    !string.Equals(applied.Permission, "granted", StringComparison.Ordinal))
+                {
+                    Toasts.Show(
+                        "As notificações do sistema não foram autorizadas neste dispositivo.",
+                        ToastKind.Info,
+                        6000);
+                }
+                else if (request.ChatNotifications &&
+                         string.Equals(applied.Permission, "requested", StringComparison.Ordinal))
+                {
+                    Toasts.Show(
+                        "Autorize as notificações do Onda no sistema para recebê-las.",
+                        ToastKind.Info,
+                        6000);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or JsonException)
+        {
+            Toasts.Show("Não foi possível salvar as preferências de notificação.", ToastKind.Error);
+        }
+        finally
+        {
+            _notificationSettingsBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private void PlayRoomSound(string kind)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("onda.playRoomSound", kind);
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                // The sound is optional and the circuit may be going away.
+            }
+        });
+    }
+
+    private void NotifyChat(ChatMessageView message)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await JS.InvokeVoidAsync(
+                    "onda.showChatNotification",
+                    message.SenderName,
+                    message.Text,
+                    _room?.Name ?? "Onda",
+                    Code);
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                // Notifications are optional.
+            }
+        });
+    }
+
     private void OpenInstallDialogFromMenu()
     {
         CloseRoomMenus();
@@ -4600,6 +4878,19 @@ else
     private sealed record NativeAudioRouteResponse(List<NativeAudioDeviceView>? Devices);
 
     private sealed record AudioDeviceView(string DeviceId, string Label);
+
+    private sealed record NotificationSettingsRequest(
+        bool JoinSound,
+        bool LeaveSound,
+        bool MessageSound,
+        bool ChatNotifications);
+
+    private sealed record NotificationSettingsView(
+        bool JoinSound,
+        bool LeaveSound,
+        bool MessageSound,
+        bool ChatNotifications,
+        string? Permission = null);
 
     private sealed record WebAudioSettings(
         List<AudioDeviceView>? Inputs,
