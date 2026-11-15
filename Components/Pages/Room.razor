@@ -3525,6 +3525,7 @@ else
                         ToJsCameraQuality(_cameraQuality));
                     _nativeMedia = true;
                     _jsReady = true;
+                    _ = ApplySelfModerationAsync();
 
                     if (viewerToken is not null &&
                         !string.IsNullOrWhiteSpace(livekitUrl))
@@ -3601,6 +3602,7 @@ else
             _jsReady = true;
             await PushInitialVolumesAsync();
             await FlushPendingSignalsAsync();
+            _ = ApplySelfModerationAsync();
         }
         catch (Exception ex) when (ex is JSException or InvalidOperationException or JSDisconnectedException)
         {

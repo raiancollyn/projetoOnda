@@ -1777,6 +1777,7 @@ public sealed class RoomService
         }
 
         RaiseRoomChanged(code);
+        RaiseLobbyChanged();
         if (chatChanged)
         {
             RaiseChatChanged(code);
