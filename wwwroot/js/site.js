@@ -2244,7 +2244,9 @@
         if (parts.length === 1) {
             return parts[0].slice(0, 2).toUpperCase();
         }
-        return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+        const first = parts[0][0];
+        const last = parts[parts.length - 1][0];
+        return (/\d/.test(last) ? first : `${first}${last}`).toUpperCase();
     }
 
     function pipVideoFor(peerId) {
@@ -2260,6 +2262,37 @@
             null;
     }
 
+    function drawPipMic(context, x, y, size, color) {
+        const capsuleWidth = size * 0.34;
+        const capsuleTop = y - size * 0.3;
+        const capsuleBottom = y + size * 0.05;
+
+        context.save();
+        context.fillStyle = color;
+        context.strokeStyle = color;
+        context.lineWidth = Math.max(1, size * 0.1);
+        context.lineCap = "round";
+
+        context.beginPath();
+        context.arc(x, capsuleTop, capsuleWidth / 2, Math.PI, 0);
+        context.lineTo(x + capsuleWidth / 2, capsuleBottom);
+        context.arc(x, capsuleBottom, capsuleWidth / 2, 0, Math.PI);
+        context.closePath();
+        context.fill();
+
+        context.beginPath();
+        context.arc(x, y + size * 0.02, size * 0.36, 0.08 * Math.PI, 0.92 * Math.PI);
+        context.stroke();
+
+        context.beginPath();
+        context.moveTo(x, y + size * 0.38);
+        context.lineTo(x, y + size * 0.62);
+        context.moveTo(x - size * 0.24, y + size * 0.62);
+        context.lineTo(x + size * 0.24, y + size * 0.62);
+        context.stroke();
+        context.restore();
+    }
+
     function drawPipAvatar(context, width, height, target) {
         const tone = pipTonePalette[Math.abs(target.tone) % pipTonePalette.length];
         const gradient = context.createLinearGradient(0, 0, width, height);
@@ -2268,7 +2301,7 @@
         context.fillStyle = gradient;
         context.fillRect(0, 0, width, height);
 
-        context.globalAlpha = 0.22;
+        context.globalAlpha = 0.2;
         context.fillStyle = tone;
         context.beginPath();
         context.arc(width * 0.82, height * 0.18, width * 0.32, 0, Math.PI * 2);
@@ -2279,7 +2312,7 @@
         context.globalAlpha = 1;
 
         const centerX = width / 2;
-        const centerY = height * 0.4;
+        const centerY = height * 0.39;
         const radius = Math.min(width, height) * 0.16;
         context.beginPath();
         context.arc(centerX, centerY, radius, 0, Math.PI * 2);
@@ -2287,11 +2320,15 @@
         context.fill();
 
         if (target.speaking) {
+            context.save();
             context.beginPath();
             context.arc(centerX, centerY, radius + 7, 0, Math.PI * 2);
-            context.strokeStyle = "rgba(205, 242, 124, 0.78)";
+            context.strokeStyle = "rgba(205, 242, 124, 0.84)";
             context.lineWidth = 3;
+            context.shadowColor = "rgba(205, 242, 124, 0.45)";
+            context.shadowBlur = 18;
             context.stroke();
+            context.restore();
         }
 
         context.fillStyle = "#10231d";
@@ -2302,23 +2339,34 @@
 
         context.fillStyle = "#f0ece5";
         context.font = `700 ${Math.round(width * 0.055)}px "DM Sans", "Segoe UI", sans-serif`;
-        context.fillText(target.name, centerX, height * 0.68, width * 0.82);
+        context.fillText(target.name, centerX, height * 0.66, width * 0.82);
 
-        context.fillStyle = target.speaking ? "#cdf27c" : "rgba(240, 236, 229, 0.62)";
-        context.font = `600 ${Math.round(width * 0.032)}px "DM Sans", "Segoe UI", sans-serif`;
-        context.fillText(target.speaking ? "Falando agora" : "Em foco", centerX, height * 0.79);
+        const statusText = target.speaking ? "Falando agora" : "Em foco";
+        const statusColor = target.speaking ? "#cdf27c" : "rgba(240, 236, 229, 0.62)";
+        const statusFont = `600 ${Math.round(width * 0.03)}px "DM Sans", "Segoe UI", sans-serif`;
+        const micSize = width * 0.024;
+        const micGap = width * 0.009;
+        context.font = statusFont;
+        const statusWidth = context.measureText(statusText).width;
+        const groupWidth = micSize + micGap + statusWidth;
+        const groupStart = centerX - groupWidth / 2;
+        const statusY = height * 0.765;
+        drawPipMic(context, groupStart + micSize / 2, statusY - 1, micSize, statusColor);
+        context.fillStyle = statusColor;
+        context.font = statusFont;
+        context.textAlign = "left";
+        context.fillText(statusText, groupStart + micSize + micGap, statusY + 1);
 
         if (target.speaking) {
             const barWidth = width * 0.012;
             const gap = width * 0.012;
-            const baseY = height * 0.9;
+            const baseY = height * 0.875;
             const heights = [0.035, 0.055, 0.075, 0.05, 0.03];
             const total = heights.length * barWidth + (heights.length - 1) * gap;
             let x = centerX - total / 2;
             context.fillStyle = "#cdf27c";
             heights.forEach((ratio, index) => {
                 const barHeight = height * ratio * (index % 2 === 0 ? 1 : 0.72);
-                context.beginPath();
                 context.fillRect(x, baseY - barHeight, barWidth, barHeight);
                 x += barWidth + gap;
             });
@@ -2910,14 +2958,13 @@
 
     async function toggleParticipantPip(target) {
         try {
+            // O PiP nativo de vídeo continua sendo o preferido: ele já entrega
+            // os controles do sistema que o usuário conhece.
             if (desktopPipSession) {
                 stopDesktopPip(true);
-                return true;
             }
-
             if (supportsDocumentPip() && window.documentPictureInPicture.window) {
                 window.documentPictureInPicture.window.close();
-                return true;
             }
 
             if (document.pictureInPictureElement) {
@@ -2928,27 +2975,6 @@
             const normalized = normalizePipTarget(target);
             if (!normalized) {
                 return false;
-            }
-
-            if (supportsDesktopPip()) {
-                try {
-                    if (await startDesktopPip(normalized)) {
-                        return true;
-                    }
-                } catch {
-                    // Se a janela nativa falhar, tenta os caminhos do navegador.
-                }
-            }
-
-            if (supportsDocumentPip()) {
-                try {
-                    if (await startDocumentPip(normalized)) {
-                        return true;
-                    }
-                } catch {
-                    // Navegador pode bloquear a janela de documento; usa o PiP
-                    // de vídeo nativo como alternativa.
-                }
             }
 
             return await startParticipantPip(normalized);

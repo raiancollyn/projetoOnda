@@ -4517,3 +4517,12 @@ html[data-theme="light"] .focus-avatar-card.is-speaking .focus-card-status {
 html[data-theme="light"] .focus-card-hint {
     color: rgba(21, 35, 29, 0.45);
 }
+.focus-live-bars {
+    height: 1rem;
+    gap: 3px;
+    margin-top: 0.3rem;
+}
+
+.focus-live-bars i {
+    width: 3px;
+}

@@ -526,9 +526,10 @@ else
                                             <Icon Name="@(focused.MicOn ? "mic" : "mic-off")" Size="15" />
                                             @(focused.Speaking ? "Falando agora" : focused.MicOn ? "Microfone ligado" : "Em silêncio")
                                         </p>
-                                        <p class="focus-card-hint">
-                                            Quando ligar a câmera ou compartilhar a tela, a transmissão aparece aqui.
-                                        </p>
+                                        @if (focused.Speaking)
+                                        {
+                                            <span class="person-live-bars focus-live-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+                                        }
                                     </article>
                                     @if (OtherShares.Count > 0)
                                     {
