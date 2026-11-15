@@ -870,8 +870,21 @@ async function createGainProcessedMicrophoneTrack(rawTrack) {
         source.connect(gain);
         gain.connect(destination);
 
+        const processedMediaTrack = destination.stream.getAudioTracks()[0];
+        // A track created by MediaStreamAudioDestinationNode rejects most
+        // constraints. Krisp asks for constraints during initialization, so
+        // make that call a no-op while its worklet processes this track.
+        try {
+            Object.defineProperty(processedMediaTrack, "applyConstraints", {
+                value: async () => {},
+                configurable: true
+            });
+        } catch {
+            // Older browsers may not allow overriding the method.
+        }
+
         const processedTrack = new LocalAudioTrack(
-            destination.stream.getAudioTracks()[0],
+            processedMediaTrack,
             undefined,
             false,
             context
