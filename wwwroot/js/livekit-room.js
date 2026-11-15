@@ -76,6 +76,7 @@ let inputVolume = storedAudioPreferences.inputVolume;
 let outputVolume = storedAudioPreferences.outputVolume;
 let noiseSuppression = storedAudioPreferences.noiseSuppression;
 let echoCancellation = storedAudioPreferences.echoCancellation;
+let processingIntensity = storedAudioPreferences.processingIntensity;
 
 function readAudioPreferences() {
     const fallback = {
@@ -84,7 +85,8 @@ function readAudioPreferences() {
         inputVolume: 1,
         outputVolume: 1,
         noiseSuppression: true,
-        echoCancellation: true
+        echoCancellation: true,
+        processingIntensity: "standard"
     };
 
     try {
@@ -104,7 +106,10 @@ function readAudioPreferences() {
             inputVolume: clamp(parsed.inputVolume),
             outputVolume: clamp(parsed.outputVolume),
             noiseSuppression: parsed.noiseSuppression !== false,
-            echoCancellation: parsed.echoCancellation !== false
+            echoCancellation: parsed.echoCancellation !== false,
+            processingIntensity: ["soft", "standard", "aggressive"].includes(parsed.processingIntensity)
+                ? parsed.processingIntensity
+                : "standard"
         };
     } catch {
         return fallback;
@@ -119,7 +124,8 @@ function persistAudioPreferences() {
             inputVolume,
             outputVolume,
             noiseSuppression,
-            echoCancellation
+            echoCancellation,
+            processingIntensity
         }));
     } catch {
         // Private mode may block persistence.
@@ -275,7 +281,7 @@ export async function initialize(ref, roomCode, guestId, config = {}) {
         audioCaptureDefaults: {
             echoCancellation,
             noiseSuppression,
-            autoGainControl: true
+            autoGainControl: processingIntensity !== "aggressive"
         },
         videoCaptureDefaults: {
             resolution: { width: 1280, height: 720, frameRate: 30 }
@@ -731,7 +737,7 @@ async function createMicrophoneTrackWithFallback() {
     const baseOptions = {
         echoCancellation,
         noiseSuppression,
-        autoGainControl: true
+        autoGainControl: processingIntensity !== "aggressive"
     };
 
     try {
@@ -884,12 +890,12 @@ export function setAudioInputVolume(value) {
     return inputVolume;
 }
 
-export async function switchAudioInput(deviceId) {
+export async function switchAudioInput(deviceId, force = false) {
     if (!initialized || !room || !deviceId) {
         return false;
     }
 
-    if (deviceId === inputDeviceId && local.micTrack?.mediaStreamTrack?.readyState === "live") {
+    if (!force && deviceId === inputDeviceId && local.micTrack?.mediaStreamTrack?.readyState === "live") {
         return true;
     }
 
@@ -901,7 +907,7 @@ export async function switchAudioInput(deviceId) {
         const nextTrack = await createLocalAudioTrack({
             echoCancellation,
             noiseSuppression,
-            autoGainControl: true,
+            autoGainControl: processingIntensity !== "aggressive",
             deviceId: { exact: deviceId }
         });
 
@@ -940,18 +946,32 @@ export async function switchAudioInput(deviceId) {
     }
 }
 
-export async function setAudioProcessing(noise, echo) {
+export async function setAudioProcessing(noise, echo, intensity) {
     noiseSuppression = Boolean(noise);
     echoCancellation = Boolean(echo);
+    processingIntensity = ["soft", "standard", "aggressive"].includes(intensity)
+        ? intensity
+        : "standard";
     persistAudioPreferences();
 
     const track = local.micTrack?.mediaStreamTrack;
     if (track && typeof track.applyConstraints === "function") {
         try {
-            await track.applyConstraints({ noiseSuppression, echoCancellation });
+            await track.applyConstraints({
+                noiseSuppression,
+                echoCancellation,
+                autoGainControl: processingIntensity !== "aggressive"
+            });
         } catch (error) {
             console.warn("Onda: could not apply audio processing live", error);
         }
+    }
+
+    // Some browsers keep the old DSP settings on an existing track. Recreate
+    // the microphone track so the selected profile is definitely applied.
+    const deviceId = track?.getSettings?.().deviceId || inputDeviceId;
+    if (initialized && room && track && deviceId) {
+        await switchAudioInput(deviceId, true);
     }
 
     return true;
@@ -1042,6 +1062,7 @@ export async function getAudioSettings() {
         outputVolume,
         noiseSuppression,
         echoCancellation,
+        processingIntensity,
         canSelectOutput: typeof HTMLMediaElement !== "undefined" &&
             typeof HTMLMediaElement.prototype.setSinkId === "function"
     };

@@ -1634,7 +1634,19 @@
         return result?.echoCancellation !== false;
     }
 
-    async function setNativeAudioProcessing(noiseSuppression, echoCancellation) {
+    async function getNativeAudioProcessingIntensity() {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            return "standard";
+        }
+
+        const result = await plugin.getAudioProcessing();
+        return ["soft", "standard", "aggressive"].includes(result?.intensity)
+            ? result.intensity
+            : "standard";
+    }
+
+    async function setNativeAudioProcessing(noiseSuppression, echoCancellation, intensity) {
         const plugin = nativeMediaPlugin();
         if (!plugin) {
             return false;
@@ -1642,7 +1654,10 @@
 
         const result = await plugin.setAudioProcessing({
             noiseSuppression: Boolean(noiseSuppression),
-            echoCancellation: Boolean(echoCancellation)
+            echoCancellation: Boolean(echoCancellation),
+            intensity: ["soft", "standard", "aggressive"].includes(intensity)
+                ? intensity
+                : "standard"
         });
         return result?.noiseSuppression === Boolean(noiseSuppression) &&
             result?.echoCancellation === Boolean(echoCancellation);
@@ -2491,6 +2506,7 @@
         setNativeScreenQuality,
         getNativeNoiseSuppression,
         getNativeEchoCancellation,
+        getNativeAudioProcessingIntensity,
         setNativeAudioProcessing,
         registerNativeMicListener,
         getNativeMic,

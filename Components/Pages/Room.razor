@@ -1074,6 +1074,20 @@ else
                        disabled="@_audioProcessingBusy"
                        aria-label="Ativar ou desativar cancelamento de eco" />
             </label>
+            <label class="field">
+                <span class="field-label">Intensidade do processamento</span>
+                <select class="text-input"
+                        @bind="_audioProcessingIntensity"
+                        @bind:after="ApplyAudioProcessingAsync"
+                        disabled="@_audioProcessingBusy">
+                    <option value="soft">Suave</option>
+                    <option value="standard">Padrão</option>
+                    <option value="aggressive">Agressivo</option>
+                </select>
+                <span class="field-hint">
+                    O WebRTC não expõe um nível contínuo; o perfil ajusta ganho automático e filtros.
+                </span>
+            </label>
         </div>
         <p class="quality-note">
             Conecte o Bluetooth ou o fone com fio antes de abrir esta lista. O volume usa a saída de mídia do Android.
@@ -1190,6 +1204,20 @@ else
                        @onchange="ToggleEchoCancellationAsync"
                        disabled="@_audioProcessingBusy"
                        aria-label="Ativar ou desativar cancelamento de eco" />
+            </label>
+            <label class="field">
+                <span class="field-label">Intensidade do processamento</span>
+                <select class="text-input"
+                        @bind="_audioProcessingIntensity"
+                        @bind:after="ApplyAudioProcessingAsync"
+                        disabled="@_audioProcessingBusy">
+                    <option value="soft">Suave</option>
+                    <option value="standard">Padrão</option>
+                    <option value="aggressive">Agressivo</option>
+                </select>
+                <span class="field-hint">
+                    O navegador não oferece um nível contínuo; o perfil ajusta o ganho e os filtros disponíveis.
+                </span>
             </label>
         </div>
 
@@ -1785,6 +1813,7 @@ else
     private bool _audioNativeMode;
     private bool _noiseSuppression = true;
     private bool _echoCancellation = true;
+    private string _audioProcessingIntensity = "standard";
     private bool _audioProcessingBusy;
     private bool _audioCanSelectOutput;
     private IReadOnlyList<NativeAudioDeviceView> _audioRouteDevices = [];
@@ -2343,6 +2372,7 @@ else
                         nativeScreenOn = await JS.InvokeAsync<bool>("onda.getNativeScreenShare");
                         _noiseSuppression = await JS.InvokeAsync<bool>("onda.getNativeNoiseSuppression");
                         _echoCancellation = await JS.InvokeAsync<bool>("onda.getNativeEchoCancellation");
+                        _audioProcessingIntensity = await JS.InvokeAsync<string>("onda.getNativeAudioProcessingIntensity");
                     }
                     catch (Exception ex) when (ex is JSException or JSDisconnectedException)
                     {
@@ -4432,11 +4462,13 @@ else
                 ? await JS.InvokeAsync<bool>(
                     "onda.setNativeAudioProcessing",
                     _noiseSuppression,
-                    _echoCancellation)
+                    _echoCancellation,
+                    _audioProcessingIntensity)
                 : await _jsModule!.InvokeAsync<bool>(
                     "setAudioProcessing",
                     _noiseSuppression,
-                    _echoCancellation);
+                    _echoCancellation,
+                    _audioProcessingIntensity);
             if (!applied)
             {
                 Toasts.Show(
@@ -4494,6 +4526,9 @@ else
             _audioCanSelectOutput = settings?.CanSelectOutput ?? false;
             _noiseSuppression = settings?.NoiseSuppression ?? true;
             _echoCancellation = settings?.EchoCancellation ?? true;
+            _audioProcessingIntensity = settings?.ProcessingIntensity is "soft" or "standard" or "aggressive"
+                ? settings.ProcessingIntensity
+                : "standard";
         }
         catch (Exception ex) when (ex is JSException or JSDisconnectedException)
         {
@@ -4930,7 +4965,8 @@ else
         double OutputVolume,
         bool CanSelectOutput,
         bool NoiseSuppression,
-        bool EchoCancellation);
+        bool EchoCancellation,
+        string? ProcessingIntensity = null);
 
     private sealed record CameraOptionsView(
         IReadOnlyList<CameraDeviceView> Devices,
