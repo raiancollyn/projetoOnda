@@ -616,6 +616,22 @@ public sealed class RoomService
                 else
                 {
                     var isOwner = string.Equals(room.OwnerId, guestId, StringComparison.Ordinal);
+                    if (!isOwner &&
+                        room.Participants.Count == 0 &&
+                        string.Equals(room.OwnerName, normalizedName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Process restarts before this identity was persisted left
+                        // the room owner id orphaned. If the room is empty and the
+                        // returning guest uses the recorded owner name, restore it
+                        // instead of leaving the room without an administrator.
+                        isOwner = true;
+                        room.OwnerId = guestId;
+                        room.OwnerName = normalizedName;
+                        PersistOwnerLocked(room, now);
+                        chatChanged |= AddSystemMessageLocked(
+                            room,
+                            $"A administração da sala foi restaurada para {normalizedName}.");
+                    }
                     if (isOwner)
                     {
                         room.OwnerName = normalizedName;
@@ -635,7 +651,7 @@ public sealed class RoomService
                     room.EmptySince = null;
                     PersistEmptySinceLocked(room);
                     StartVisitLocked(room, room.Participants[guestId]);
-                    chatChanged = AddSystemMessageLocked(room, $"{normalizedName} entrou na sala.");
+                    chatChanged |= AddSystemMessageLocked(room, $"{normalizedName} entrou na sala.");
                     ClearNoticeLocked(room.Id, guestId);
                     room.LastActivityAt = now;
                     snapshot = ToViewLocked(room, includeMessages: true);

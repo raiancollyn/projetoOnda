@@ -3,6 +3,11 @@ using Onda.Models;
 
 namespace Onda.Services;
 
+public sealed record PersistedGuestIdentity(
+    string GuestId,
+    string Name,
+    int AvatarTone);
+
 public sealed record PersistedRoom(
     string Id,
     string Name,
@@ -94,8 +99,58 @@ public sealed class ChatStore
         command.ExecuteNonQuery();
     }
 
-    public void UpdateOwnerName(string roomId, string ownerName, DateTimeOffset now)
+    public PersistedGuestIdentity? GetGuestIdentity(string tokenHash)
     {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT guest_id, name, avatar_tone
+            FROM guest_identities
+            WHERE token_hash = $tokenHash
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$tokenHash", tokenHash);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return null;
+        }
+
+        return new PersistedGuestIdentity(
+            reader.GetString(0),
+            reader.GetString(1),
+            reader.GetInt32(2));
+    }
+
+    public void UpsertGuestIdentity(
+        string tokenHash,
+        string guestId,
+        string name,
+        int avatarTone,
+        DateTimeOffset now)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO guest_identities (
+                token_hash, guest_id, name, avatar_tone, updated_at_ms
+            )
+            VALUES ($tokenHash, $guestId, $name, $avatarTone, $updatedAt)
+            ON CONFLICT(token_hash) DO UPDATE SET
+                guest_id = excluded.guest_id,
+                name = excluded.name,
+                avatar_tone = excluded.avatar_tone,
+                updated_at_ms = excluded.updated_at_ms;
+            """;
+        command.Parameters.AddWithValue("$tokenHash", tokenHash);
+        command.Parameters.AddWithValue("$guestId", guestId);
+        command.Parameters.AddWithValue("$name", name);
+        command.Parameters.AddWithValue("$avatarTone", avatarTone);
+        command.Parameters.AddWithValue("$updatedAt", now.ToUnixTimeMilliseconds());
+        command.ExecuteNonQuery();
+    }
+
+    public void UpdateOwnerName(string roomId, string ownerName, DateTimeOffset now)    {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
         command.CommandText = """
@@ -646,6 +701,14 @@ public sealed class ChatStore
 
                 CREATE INDEX IF NOT EXISTS ix_room_visits_room_guest
                     ON room_visits(room_id, guest_id, joined_at_ms);
+
+                CREATE TABLE IF NOT EXISTS guest_identities (
+                    token_hash TEXT NOT NULL PRIMARY KEY,
+                    guest_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    avatar_tone INTEGER NOT NULL,
+                    updated_at_ms INTEGER NOT NULL
+                );
 
                 CREATE TABLE IF NOT EXISTS room_bans (
                     id TEXT NOT NULL PRIMARY KEY,
