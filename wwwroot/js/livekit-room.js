@@ -753,10 +753,6 @@ const RNNOISE_WASM_URL = new URL("./vendor/rnnoise/rnnoise.wasm", import.meta.ur
 const RNNOISE_SIMD_WASM_URL = new URL("./vendor/rnnoise/rnnoise_simd.wasm", import.meta.url).href;
 let rnnoiseBinaryPromise = null;
 
-function isVoiceIsolationSupported() {
-    return navigator.mediaDevices?.getSupportedConstraints?.().voiceIsolation === true;
-}
-
 async function loadRnnoiseModule() {
     rnnoiseModulePromise ??= import(RNNOISE_INDEX_URL);
     return rnnoiseModulePromise;
@@ -867,12 +863,7 @@ export async function setRnnoiseEnabled(enabled) {
 }
 
 export async function setVoiceIsolation(enabled) {
-    const next = Boolean(enabled);
-    if (next && !isVoiceIsolationSupported()) {
-        return false;
-    }
-
-    voiceIsolation = next;
+    voiceIsolation = Boolean(enabled);
     persistAudioPreferences();
 
     if (initialized && room && local.micTrack) {
@@ -994,7 +985,7 @@ async function createMicrophoneTrackWithFallback() {
         echoCancellation,
         noiseSuppression,
         autoGainControl: processingIntensity !== "aggressive",
-        ...(voiceIsolation && isVoiceIsolationSupported() ? { voiceIsolation: true } : {})
+        ...(voiceIsolation ? { voiceIsolation: true } : {})
     };
 
     try {
@@ -1176,7 +1167,7 @@ export async function switchAudioInput(deviceId, force = false) {
             echoCancellation,
             noiseSuppression,
             autoGainControl: processingIntensity !== "aggressive",
-            ...(voiceIsolation && isVoiceIsolationSupported() ? { voiceIsolation: true } : {}),
+            ...(voiceIsolation ? { voiceIsolation: true } : {}),
             deviceId: { exact: deviceId }
         });
         const nextTrack = await createGainProcessedMicrophoneTrack(rawTrack);
@@ -1349,7 +1340,6 @@ export async function getAudioSettings() {
         processingIntensity,
         voiceIsolation,
         rnnoiseEnabled,
-        voiceIsolationSupported: isVoiceIsolationSupported(),
         canSelectOutput: typeof HTMLMediaElement !== "undefined" &&
             typeof HTMLMediaElement.prototype.setSinkId === "function"
     };

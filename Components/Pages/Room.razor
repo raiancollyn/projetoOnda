@@ -1202,7 +1202,7 @@ else
                 <input type="checkbox"
                        checked="@_voiceIsolationEnabled"
                        @onchange="ToggleVoiceIsolationAsync"
-                       disabled="@_audioProcessingBusy || !_voiceIsolationSupported"
+                       disabled="@_audioProcessingBusy"
                        aria-label="Ativar ou desativar isolamento de voz" />
             </label>
             <label class="camera-toggle-row">
@@ -1219,12 +1219,6 @@ else
                        disabled="@_audioProcessingBusy"
                        aria-label="Ativar ou desativar RNNoise" />
             </label>
-            @if (!_voiceIsolationSupported)
-            {
-                <p class="quality-note">
-                    Este navegador não informa suporte ao isolamento de voz. A opção fica indisponível.
-                </p>
-            }
         </div>
 
         <p class="quality-note">
@@ -1821,7 +1815,6 @@ else
     private bool _echoCancellation = true;
     private string _audioProcessingIntensity = "standard";
     private bool _voiceIsolationEnabled;
-    private bool _voiceIsolationSupported;
     private bool _rnnoiseEnabled;
     private bool _audioProcessingBusy;
     private bool _audioCanSelectOutput;
@@ -4473,9 +4466,8 @@ else
             if (!applied)
             {
                 _voiceIsolationEnabled = false;
-                _voiceIsolationSupported = false;
                 Toasts.Show(
-                    "O isolamento de voz não está disponível neste navegador.",
+                    "Não foi possível alterar o isolamento de voz.",
                     ToastKind.Info,
                     6000);
             }
@@ -4609,9 +4601,7 @@ else
             _audioProcessingIntensity = settings?.ProcessingIntensity is "soft" or "standard" or "aggressive"
                 ? settings.ProcessingIntensity
                 : "standard";
-            _voiceIsolationEnabled = (settings?.VoiceIsolation ?? false) &&
-                (settings?.VoiceIsolationSupported ?? false);
-            _voiceIsolationSupported = settings?.VoiceIsolationSupported ?? false;
+            _voiceIsolationEnabled = settings?.VoiceIsolation ?? false;
             _rnnoiseEnabled = settings?.RnnoiseEnabled ?? false;
         }
         catch (Exception ex) when (ex is JSException or JSDisconnectedException)
@@ -5052,7 +5042,6 @@ else
         bool EchoCancellation,
         string? ProcessingIntensity = null,
         bool VoiceIsolation = false,
-        bool VoiceIsolationSupported = false,
         bool RnnoiseEnabled = false);
 
     private sealed record CameraOptionsView(
