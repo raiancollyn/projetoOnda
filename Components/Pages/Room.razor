@@ -597,7 +597,7 @@ else
 
                     <div class="dock-controls">
                         <button type="button"
-                                class="dock-control @(_localMicOn ? "is-on" : "is-off")"
+                                class="dock-control @(_localMicOn ? "is-stop" : null)"
                                 @onclick="ToggleMicrophoneAsync"
                                 disabled="@(!_jsReady || _actionPending is not null)"
                                 aria-pressed="@(_localMicOn ? "true" : "false")"
