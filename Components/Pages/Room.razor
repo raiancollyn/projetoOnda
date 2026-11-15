@@ -1179,20 +1179,6 @@ else
             </div>
             <label class="camera-toggle-row">
                 <span>
-                    <Icon Name="wave" Size="17" />
-                    <span>
-                        <strong>Supressão de ruído</strong>
-                        <small>Reduz ruídos constantes como ventilador e trânsito.</small>
-                    </span>
-                </span>
-                <input type="checkbox"
-                       checked="@_noiseSuppression"
-                       @onchange="ToggleNoiseSuppressionAsync"
-                       disabled="@_audioProcessingBusy"
-                       aria-label="Ativar ou desativar supressão de ruído" />
-            </label>
-            <label class="camera-toggle-row">
-                <span>
                     <Icon Name="volume-off" Size="17" />
                     <span>
                         <strong>Cancelamento de eco</strong>
@@ -1204,20 +1190,6 @@ else
                        @onchange="ToggleEchoCancellationAsync"
                        disabled="@_audioProcessingBusy"
                        aria-label="Ativar ou desativar cancelamento de eco" />
-            </label>
-            <label class="field">
-                <span class="field-label">Intensidade do processamento</span>
-                <select class="text-input"
-                        @bind="_audioProcessingIntensity"
-                        @bind:after="ApplyAudioProcessingAsync"
-                        disabled="@_audioProcessingBusy">
-                    <option value="soft">Suave</option>
-                    <option value="standard">Padrão</option>
-                    <option value="aggressive">Agressivo</option>
-                </select>
-                <span class="field-hint">
-                    O navegador não oferece um nível contínuo; o perfil ajusta o ganho e os filtros disponíveis.
-                </span>
             </label>
             <label class="camera-toggle-row">
                 <span>
@@ -1233,6 +1205,23 @@ else
                        disabled="@_audioProcessingBusy"
                        aria-label="Ativar ou desativar cancelamento de ruído Krisp" />
             </label>
+            @if (_krispNoiseEnabled)
+            {
+                <label class="field">
+                    <span class="field-label">Qualidade do Krisp</span>
+                    <select class="text-input"
+                            @bind="_krispQuality"
+                            @bind:after="ApplyKrispQualityAsync"
+                            disabled="@_audioProcessingBusy">
+                        <option value="low">Baixa</option>
+                        <option value="medium">Média</option>
+                        <option value="high">Alta</option>
+                    </select>
+                    <span class="field-hint">
+                        Qualidade maior usa mais processamento e pode aumentar o consumo.
+                    </span>
+                </label>
+            }
         </div>
 
         <p class="quality-note">
@@ -1829,6 +1818,7 @@ else
     private bool _echoCancellation = true;
     private string _audioProcessingIntensity = "standard";
     private bool _krispNoiseEnabled;
+    private string _krispQuality = "medium";
     private bool _audioProcessingBusy;
     private bool _audioCanSelectOutput;
     private IReadOnlyList<NativeAudioDeviceView> _audioRouteDevices = [];
@@ -4497,6 +4487,35 @@ else
         }
     }
 
+    private async Task ApplyKrispQualityAsync()
+    {
+        if (_nativeMedia || _jsModule is null || _audioProcessingBusy || !_krispNoiseEnabled)
+        {
+            return;
+        }
+
+        _audioProcessingBusy = true;
+        StateHasChanged();
+        try
+        {
+            var applied = await _jsModule.InvokeAsync<bool>("setKrispQuality", _krispQuality);
+            if (!applied)
+            {
+                _krispNoiseEnabled = false;
+                Toasts.Show("Não foi possível alterar a qualidade do Krisp.", ToastKind.Error);
+            }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            Toasts.Show("Não foi possível alterar a qualidade do Krisp.", ToastKind.Error);
+        }
+        finally
+        {
+            _audioProcessingBusy = false;
+            StateHasChanged();
+        }
+    }
+
     private async Task ApplyAudioProcessingAsync()
     {
         if (_audioProcessingBusy || (!_nativeMedia && _jsModule is null))
@@ -4580,6 +4599,9 @@ else
                 ? settings.ProcessingIntensity
                 : "standard";
             _krispNoiseEnabled = settings?.KrispEnabled ?? false;
+            _krispQuality = settings?.KrispQuality is "low" or "medium" or "high"
+                ? settings.KrispQuality
+                : "medium";
         }
         catch (Exception ex) when (ex is JSException or JSDisconnectedException)
         {
@@ -5018,7 +5040,8 @@ else
         bool NoiseSuppression,
         bool EchoCancellation,
         string? ProcessingIntensity = null,
-        bool KrispEnabled = false);
+        bool KrispEnabled = false,
+        string? KrispQuality = null);
 
     private sealed record CameraOptionsView(
         IReadOnlyList<CameraDeviceView> Devices,

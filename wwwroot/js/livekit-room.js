@@ -7,6 +7,7 @@
  */
 
 import {
+    LocalAudioTrack,
     Room,
     RoomEvent,
     Track,
@@ -78,6 +79,7 @@ let noiseSuppression = storedAudioPreferences.noiseSuppression;
 let echoCancellation = storedAudioPreferences.echoCancellation;
 let processingIntensity = storedAudioPreferences.processingIntensity;
 let krispEnabled = storedAudioPreferences.krispEnabled;
+let krispQuality = storedAudioPreferences.krispQuality;
 let krispModulePromise = null;
 let krispProcessor = null;
 
@@ -90,7 +92,8 @@ function readAudioPreferences() {
         noiseSuppression: true,
         echoCancellation: true,
         processingIntensity: "standard",
-        krispEnabled: false
+        krispEnabled: false,
+        krispQuality: "medium"
     };
 
     try {
@@ -114,7 +117,10 @@ function readAudioPreferences() {
             processingIntensity: ["soft", "standard", "aggressive"].includes(parsed.processingIntensity)
                 ? parsed.processingIntensity
                 : "standard",
-            krispEnabled: parsed.krispEnabled === true
+            krispEnabled: parsed.krispEnabled === true,
+            krispQuality: ["low", "medium", "high"].includes(parsed.krispQuality)
+                ? parsed.krispQuality
+                : "medium"
         };
     } catch {
         return fallback;
@@ -131,7 +137,8 @@ function persistAudioPreferences() {
             noiseSuppression,
             echoCancellation,
             processingIntensity,
-            krispEnabled
+            krispEnabled,
+            krispQuality
         }));
     } catch {
         // Private mode may block persistence.
@@ -153,6 +160,8 @@ function createLocalState() {
         micTrack: null,
         micOn: false,
         hasMic: false,
+        micInput: null,
+        micDeviceId: "",
 
         cameraTrack: null,
         cameraOn: false,
@@ -429,6 +438,7 @@ export async function disposeRoom() {
     stopLocalTrack(local.screenVideoTrack);
     stopLocalTrack(local.cameraTrack);
     stopLocalTrack(local.micTrack);
+    disposeMicInput();
 
     if (local.audioContext && local.audioContext.state !== "closed") {
         try {
@@ -757,7 +767,7 @@ async function attachKrispToTrack(track) {
             throw new Error("Krisp não é suportado neste navegador.");
         }
 
-        const processor = KrispNoiseFilter({ quality: "medium" });
+        const processor = KrispNoiseFilter({ quality: krispQuality });
         await track.setProcessor(processor);
         krispProcessor = processor;
         return true;
@@ -768,6 +778,28 @@ async function attachKrispToTrack(track) {
         persistAudioPreferences();
         return false;
     }
+}
+
+export async function setKrispQuality(quality) {
+    const normalized = ["low", "medium", "high"].includes(quality) ? quality : "medium";
+    if (normalized === krispQuality) {
+        return true;
+    }
+
+    krispQuality = normalized;
+    persistAudioPreferences();
+
+    if (!krispEnabled || !initialized || !local.micTrack) {
+        return true;
+    }
+
+    try {
+        await local.micTrack.stopProcessor();
+    } catch (error) {
+        console.warn("Onda: could not restart Krisp for quality change", error);
+    }
+    krispProcessor = null;
+    return attachKrispToTrack(local.micTrack);
 }
 
 export async function setKrispEnabled(enabled) {
@@ -793,6 +825,72 @@ export async function setKrispEnabled(enabled) {
     }
 
     return attachKrispToTrack(local.micTrack);
+}
+
+function disposeMicInput(input = local.micInput) {
+    if (!input) {
+        return;
+    }
+
+    try {
+        input.rawTrack?.mediaStreamTrack?.removeEventListener("ended", handleMicrophoneEnded);
+        input.rawTrack?.stop();
+    } catch {
+        // The track may already be stopped.
+    }
+    try {
+        input.context?.close();
+    } catch {
+        // The context may already be closed.
+    }
+    if (local.micInput === input) {
+        local.micInput = null;
+    }
+}
+
+async function createGainProcessedMicrophoneTrack(rawTrack) {
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextCtor) {
+        return rawTrack;
+    }
+
+    let context = null;
+    try {
+        context = new AudioContextCtor({ latencyHint: "interactive" });
+        await context.resume();
+        if (context.state !== "running") {
+            await context.close();
+            return rawTrack;
+        }
+
+        const source = context.createMediaStreamSource(new MediaStream([rawTrack.mediaStreamTrack]));
+        const gain = context.createGain();
+        gain.gain.value = inputVolume;
+        const destination = context.createMediaStreamDestination();
+        source.connect(gain);
+        gain.connect(destination);
+
+        const processedTrack = new LocalAudioTrack(
+            destination.stream.getAudioTracks()[0],
+            undefined,
+            false,
+            context
+        );
+        local.micInput = { rawTrack, context, source, gain, destination, processedTrack };
+        local.micDeviceId = rawTrack.mediaStreamTrack.getSettings?.().deviceId || inputDeviceId;
+        rawTrack.mediaStreamTrack.addEventListener("ended", handleMicrophoneEnded, { once: true });
+        return processedTrack;
+    } catch (error) {
+        console.warn("Onda: microphone gain processing unavailable", error);
+        if (context) {
+            try {
+                await context.close();
+            } catch {
+                // Ignore.
+            }
+        }
+        return rawTrack;
+    }
 }
 
 async function createMicrophoneTrackWithFallback() {
@@ -840,10 +938,12 @@ async function acquireMicrophone(enable) {    if (!initialized || !room) {
 
     micAcquirePromise = (async () => {
         try {
-            const track = await createMicrophoneTrackWithFallback();
+            const rawTrack = await createMicrophoneTrackWithFallback();
+            const track = await createGainProcessedMicrophoneTrack(rawTrack);
 
             if (!initialized || !room) {
                 track.stop();
+                disposeMicInput();
                 return false;
             }
 
@@ -864,6 +964,7 @@ async function acquireMicrophone(enable) {    if (!initialized || !room) {
             notifyMediaState();
             return true;
         } catch (error) {
+            disposeMicInput();
             local.hasMic = false;
             local.micOn = false;
             stopSpeakingMonitor(true);
@@ -936,6 +1037,13 @@ function clampVolume(value) {
 }
 
 function applyInputVolumeToTrack(track = local.micTrack) {
+    if (local.micInput?.gain) {
+        const context = local.micInput.context;
+        const now = context?.currentTime ?? 0;
+        local.micInput.gain.gain.setTargetAtTime(inputVolume, now, 0.02);
+        return;
+    }
+
     const mediaTrack = track?.mediaStreamTrack;
     if (!mediaTrack || typeof mediaTrack.applyConstraints !== "function") {
         return;
@@ -964,18 +1072,24 @@ export async function switchAudioInput(deviceId, force = false) {
 
     const wasOn = local.micOn;
     const oldTrack = local.micTrack;
+    const oldInput = local.micInput;
     inputDeviceId = deviceId;
 
     try {
-        const nextTrack = await createLocalAudioTrack({
+        const rawTrack = await createLocalAudioTrack({
             echoCancellation,
             noiseSuppression,
             autoGainControl: processingIntensity !== "aggressive",
             deviceId: { exact: deviceId }
         });
+        const nextTrack = await createGainProcessedMicrophoneTrack(rawTrack);
 
         if (!initialized || !room) {
             stopLocalTrack(nextTrack);
+            if (local.micInput && local.micInput !== oldInput) {
+                disposeMicInput();
+            }
+            local.micInput = oldInput;
             return false;
         }
 
@@ -998,11 +1112,16 @@ export async function switchAudioInput(deviceId, force = false) {
             await unpublishLocalTrack(oldTrack);
             stopLocalTrack(oldTrack);
         }
+        disposeMicInput(oldInput);
 
         persistAudioPreferences();
         notifyMediaState();
         return true;
     } catch (error) {
+        if (local.micInput && local.micInput !== oldInput) {
+            disposeMicInput();
+        }
+        local.micInput = oldInput;
         inputDeviceId = "";
         persistAudioPreferences();
         notifyError("microphone", "Não foi possível trocar o microfone.");
@@ -1128,6 +1247,7 @@ export async function getAudioSettings() {
         echoCancellation,
         processingIntensity,
         krispEnabled,
+        krispQuality,
         canSelectOutput: typeof HTMLMediaElement !== "undefined" &&
             typeof HTMLMediaElement.prototype.setSinkId === "function"
     };
@@ -1145,6 +1265,7 @@ function handleMicrophoneEnded() {
     stopSpeakingMonitor(true);
     void unpublishLocalTrack(track);
     stopLocalTrack(track);
+    disposeMicInput();
     notifyMediaState();
     notifyError("microphone", "O microfone foi desconectado. Conecte-o novamente para falar.");
 }
