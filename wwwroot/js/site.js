@@ -2435,6 +2435,11 @@
         document.body.appendChild(canvas);
         document.body.appendChild(video);
 
+        // O canvas precisa ter um primeiro quadro antes do captureStream.
+        // Um canvas totalmente vazio pode nunca produzir metadata de vídeo e
+        // o requestPictureInPicture falha.
+        drawPipAvatar(canvas.getContext("2d"), canvas.width, canvas.height, target);
+
         const stream = canvas.captureStream(15);
         video.srcObject = stream;
 
