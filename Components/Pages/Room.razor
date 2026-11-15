@@ -1067,19 +1067,19 @@ else
                 <span>
                     <Icon Name="sparkles" Size="17" />
                     <span>
-                        <strong>Redução de ruído</strong>
-                        <small>Redução de ruído do WebRTC no microfone do celular.</small>
+                        <strong>RNNoise</strong>
+                        <small>Cancelamento neural no microfone do celular.</small>
                     </span>
                 </span>
                 <input type="checkbox"
                        checked="@_nativeRnnoiseEnabled"
                        @onchange="ToggleNativeRnnoiseAsync"
                        disabled="@_audioProcessingBusy"
-                       aria-label="Ativar ou desativar redução de ruído" />
+                       aria-label="Ativar ou desativar RNNoise" />
             </label>
             <p class="field-hint">
-                O cancelamento de eco continua ativo internamente. O RNNoise nativo
-                ainda não está disponível nesta versão do aplicativo.
+                O cancelamento de eco continua ativo internamente. O RNNoise substitui a
+                supressão de ruído do WebRTC.
             </p>
         </div>
         <p class="quality-note">
