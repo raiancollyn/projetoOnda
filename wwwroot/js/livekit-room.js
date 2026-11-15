@@ -796,10 +796,25 @@ async function connectRnnoise(input) {
         maxChannels: 1,
         wasmBinary
     });
-    input.gain.disconnect();
-    input.gain.connect(node);
-    node.connect(input.destination);
-    input.rnnoiseNode = node;
+    try {
+        input.gain.disconnect();
+        input.gain.connect(node);
+        node.connect(input.destination);
+        input.rnnoiseNode = node;
+    } catch (error) {
+        try {
+            node.disconnect();
+            node.destroy?.();
+        } catch {
+            // Ignore cleanup failures.
+        }
+        try {
+            input.gain.connect(input.destination);
+        } catch {
+            // The graph may already be closed.
+        }
+        throw error;
+    }
     return true;
 }
 

@@ -4609,7 +4609,8 @@ else
             _audioProcessingIntensity = settings?.ProcessingIntensity is "soft" or "standard" or "aggressive"
                 ? settings.ProcessingIntensity
                 : "standard";
-            _voiceIsolationEnabled = settings?.VoiceIsolation ?? false;
+            _voiceIsolationEnabled = (settings?.VoiceIsolation ?? false) &&
+                (settings?.VoiceIsolationSupported ?? false);
             _voiceIsolationSupported = settings?.VoiceIsolationSupported ?? false;
             _rnnoiseEnabled = settings?.RnnoiseEnabled ?? false;
         }
