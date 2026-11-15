@@ -2348,7 +2348,8 @@
             return;
         }
 
-        if (!document.hidden && document.hasFocus()) {
+        const hasDesktopNotifications = Boolean(window.ondaDesktop?.notifyChat);
+        if (!hasDesktopNotifications && !document.hidden && document.hasFocus()) {
             return;
         }
 
@@ -2357,7 +2358,7 @@
             return;
         }
 
-        if (window.ondaDesktop?.notifyChat) {
+        if (hasDesktopNotifications) {
             void window.ondaDesktop.notifyChat({
                 sender: String(sender || "Alguém"),
                 text: message,
@@ -2398,6 +2399,52 @@
         }
     }
 
+    async function testChatNotification(sender, text, roomName, roomCode) {
+        const message = String(text || "Notificação de teste");
+        if (window.ondaDesktop?.notifyChat) {
+            return Boolean(await window.ondaDesktop.notifyChat({
+                sender: String(sender || "Onda"),
+                text: message,
+                roomId: String(roomCode || ""),
+                force: true
+            }));
+        }
+
+        const nativePlugin = nativeMediaPlugin();
+        if (nativePlugin?.notifyChat) {
+            try {
+                await nativePlugin.requestNotificationPermission();
+                await nativePlugin.notifyChat({
+                    sender: String(sender || "Onda"),
+                    text: message,
+                    roomId: String(roomCode || "")
+                });
+                return true;
+            } catch {
+                return false;
+            }
+        }
+
+        if (!("Notification" in window)) {
+            return false;
+        }
+
+        let permission = Notification.permission;
+        if (permission === "default") {
+            permission = await Notification.requestPermission();
+        }
+        if (permission !== "granted") {
+            return false;
+        }
+
+        new Notification(String(sender || "Onda"), {
+            body: message,
+            icon: "/og/onda-share.png",
+            silent: true
+        });
+        return true;
+    }
+
     window.onda = Object.freeze({
         copyText,
         scrollToBottom,
@@ -2428,6 +2475,7 @@
         saveNotificationSettings,
         playRoomSound,
         showChatNotification,
+        testChatNotification,
         isNativeMobile,
         startNativeCall,
         stopNativeCall,

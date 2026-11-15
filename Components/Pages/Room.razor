@@ -1284,9 +1284,14 @@ else
     </div>
 
     <div class="modal-actions modal-actions-end">
-        <button type="button" class="button button-ghost" @onclick="CloseNotificationSettings">
-            Fechar
-        </button>
+        <div class="modal-buttons">
+            <button type="button" class="button button-ghost" @onclick="TestChatNotificationAsync">
+                <Icon Name="bell" Size="16" /> Testar notificação
+            </button>
+            <button type="button" class="button button-ghost" @onclick="CloseNotificationSettings">
+                Fechar
+            </button>
+        </div>
     </div>
 </Modal>
 
@@ -3960,9 +3965,30 @@ else
         }
     }
 
-    private void PlayRoomSound(string kind)
+    private async Task TestChatNotificationAsync()
     {
-        _ = InvokeAsync(async () =>
+        try
+        {
+            var sent = await JS.InvokeAsync<bool>(
+                "onda.testChatNotification",
+                "Onda",
+                "Notificação de teste do chat.",
+                _room?.Name ?? "Onda",
+                Code);
+            Toasts.Show(
+                sent
+                    ? "Notificação de teste enviada."
+                    : "Não foi possível mostrar a notificação neste dispositivo.",
+                sent ? ToastKind.Success : ToastKind.Error);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            Toasts.Show("Não foi possível testar a notificação.", ToastKind.Error);
+        }
+    }
+
+    private void PlayRoomSound(string kind)
+    {        _ = InvokeAsync(async () =>
         {
             try
             {
