@@ -2195,14 +2195,15 @@
             name: String(target.name || "Onda"),
             tone: Number.isFinite(Number(target.tone)) ? Number(target.tone) : 0,
             speaking: Boolean(target.speaking),
-            follow: Boolean(target.follow)
+            follow: Boolean(target.follow),
+            selfId: target.selfId ? String(target.selfId) : ""
         };
     }
 
-    function pipSpeakingCard() {
-        return document.querySelector(".person-card.is-speaking[data-peer-id]") ||
-            document.querySelector(".people-row.is-speaking[data-peer-id]") ||
-            null;
+    function pipSpeakingCard(selfId) {
+        return Array.from(document.querySelectorAll(
+            ".person-card.is-speaking[data-peer-id], .people-row.is-speaking[data-peer-id]"
+        )).find((card) => !selfId || card.dataset.peerId !== selfId) || null;
     }
 
     function pipTargetFromCard(card) {
@@ -2360,11 +2361,15 @@
 
         const { width, height } = session.canvas;
         if (session.follow) {
-            const speakingCard = pipSpeakingCard();
-            if (speakingCard) {
-                const nextTarget = pipTargetFromCard(speakingCard);
-                if (nextTarget && nextTarget.id) {
-                    session.target = nextTarget;
+            const now = performance.now();
+            if (!session.lastRotation || now - session.lastRotation >= 1000) {
+                session.lastRotation = now;
+                const speakingCard = pipSpeakingCard(session.selfId);
+                if (speakingCard) {
+                    const nextTarget = pipTargetFromCard(speakingCard);
+                    if (nextTarget && nextTarget.id) {
+                        session.target = nextTarget;
+                    }
                 }
             }
         }
@@ -2450,6 +2455,8 @@
             stream,
             target,
             follow: target.follow,
+            selfId: target.selfId,
+            lastRotation: 0,
             frame: 0
         };
         pipSession = session;
@@ -2497,8 +2504,70 @@
         if (pipSession) {
             pipSession.target = pipTarget;
             pipSession.follow = pipTarget ? pipTarget.follow : true;
+            pipSession.selfId = pipTarget ? pipTarget.selfId : pipSession.selfId;
+            pipSession.lastRotation = 0;
         }
     }
+
+    function showPipFailure() {
+        const node = document.createElement("div");
+        node.textContent = "Não foi possível abrir o picture-in-picture.";
+        Object.assign(node.style, {
+            position: "fixed",
+            left: "50%",
+            bottom: "6.2rem",
+            transform: "translateX(-50%)",
+            zIndex: "2147483647",
+            padding: "0.7rem 1rem",
+            borderRadius: "0.75rem",
+            background: "rgba(12, 26, 21, 0.94)",
+            border: "1px solid rgba(255, 255, 255, 0.12)",
+            color: "#f0ece5",
+            font: "600 0.78rem 'DM Sans', 'Segoe UI', sans-serif",
+            boxShadow: "0 1rem 2.5rem rgba(0, 0, 0, 0.35)",
+            pointerEvents: "none"
+        });
+        document.body.appendChild(node);
+        window.setTimeout(() => node.remove(), 4200);
+    }
+
+    // O clique precisa chegar ao requestPictureInPicture ainda dentro da
+    // ativação do usuário. Passar pelo circuito do Blazor Server pode perder
+    // essa ativação e o navegador rejeita o PiP.
+    document.addEventListener("click", (event) => {
+        const button = event.target instanceof Element
+            ? event.target.closest("[data-onda-pip]")
+            : null;
+        if (!button) {
+            return;
+        }
+
+        const canvasSupported = typeof HTMLCanvasElement.prototype.captureStream === "function";
+        if (!document.pictureInPictureEnabled || !canvasSupported) {
+            return;
+        }
+
+        const targetId = button.dataset.pipId || "";
+        if (!document.pictureInPictureElement && !targetId) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopImmediatePropagation();
+
+        void toggleParticipantPip({
+            id: targetId,
+            name: button.dataset.pipName || "Onda",
+            tone: Number(button.dataset.pipTone || 0),
+            speaking: button.dataset.pipSpeaking === "true",
+            follow: button.dataset.pipFollow === "true",
+            selfId: button.dataset.pipSelf || ""
+        }).then((opened) => {
+            if (!opened && !document.pictureInPictureElement) {
+                showPipFailure();
+            }
+        });
+    }, true);
 
     async function toggleVideoPip() {
         if (pipTarget) {

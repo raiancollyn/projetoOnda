@@ -408,6 +408,13 @@ else
                                 {
                                     <button type="button"
                                             class="stage-grid-button"
+                                            data-onda-pip="true"
+                                            data-pip-id="@(PipTarget?.Id ?? string.Empty)"
+                                            data-pip-name="@(PipTarget?.Name ?? string.Empty)"
+                                            data-pip-tone="@(PipTarget?.ColorIndex ?? 0)"
+                                            data-pip-speaking="@((PipTarget?.Speaking ?? false).ToString().ToLowerInvariant())"
+                                            data-pip-follow="@PipFollowsActiveSpeaker.ToString().ToLowerInvariant()"
+                                            data-pip-self="@Guest.Id"
                                             aria-label="Abrir vídeo em picture-in-picture"
                                             title="Picture-in-picture"
                                             @onclick="TogglePipAsync">
@@ -572,6 +579,24 @@ else
                                     <button type="button" class="stage-grid-button" @onclick="CopyRoomLinkAsync">
                                         <Icon Name="user-plus" Size="14" /> Convidar
                                     </button>
+                                    @if (!_nativeMedia)
+                                    {
+                                        <button type="button"
+                                                class="stage-grid-button"
+                                                data-onda-pip="true"
+                                                data-pip-id="@(PipTarget?.Id ?? string.Empty)"
+                                                data-pip-name="@(PipTarget?.Name ?? string.Empty)"
+                                                data-pip-tone="@(PipTarget?.ColorIndex ?? 0)"
+                                                data-pip-speaking="@((PipTarget?.Speaking ?? false).ToString().ToLowerInvariant())"
+                                                data-pip-follow="@PipFollowsActiveSpeaker.ToString().ToLowerInvariant()"
+                                                data-pip-self="@Guest.Id"
+                                                aria-label="Abrir picture-in-picture"
+                                                title="Picture-in-picture"
+                                                @onclick="TogglePipAsync">
+                                            <Icon Name="pip" Size="14" />
+                                            <span class="stage-button-label">PiP</span>
+                                        </button>
+                                    }
                                     <button type="button"
                                             class="stage-grid-button stage-fullscreen-button"
                                             aria-label="Tela cheia da sala"
@@ -760,6 +785,13 @@ else
                         {
                             <button type="button"
                                     class="dock-control dock-pip-control"
+                                    data-onda-pip="true"
+                                    data-pip-id="@(PipTarget?.Id ?? string.Empty)"
+                                    data-pip-name="@(PipTarget?.Name ?? string.Empty)"
+                                    data-pip-tone="@(PipTarget?.ColorIndex ?? 0)"
+                                    data-pip-speaking="@((PipTarget?.Speaking ?? false).ToString().ToLowerInvariant())"
+                                    data-pip-follow="@PipFollowsActiveSpeaker.ToString().ToLowerInvariant()"
+                                    data-pip-self="@Guest.Id"
                                     @onclick="TogglePipAsync"
                                     aria-label="Abrir picture-in-picture"
                                     title="Picture-in-picture">
@@ -2008,11 +2040,25 @@ else
     private ParticipantView? ActiveSpeaker =>
         _room?.Participants.FirstOrDefault(p => p.Speaking);
 
-    private ParticipantView? PipTarget =>
-        FocusedParticipant
-        ?? ActiveSpeaker
-        ?? Shares.FirstOrDefault()
-        ?? _room?.Participants.FirstOrDefault();
+    private ParticipantView? PipTarget
+    {
+        get
+        {
+            var focused = FocusedParticipant;
+            if (focused is not null && focused.Id != Guest.Id)
+            {
+                return focused;
+            }
+
+            return ActiveSpeaker is { } speaker && speaker.Id != Guest.Id
+                ? speaker
+                : Shares.FirstOrDefault(p => p.Id != Guest.Id)
+                    ?? _room?.Participants.FirstOrDefault(p => p.Id != Guest.Id);
+        }
+    }
+
+    private bool PipFollowsActiveSpeaker =>
+        FocusedParticipant is null || FocusedParticipant.Id == Guest.Id;
 
     private bool FocusedHasMedia =>
         FocusedParticipant is { CameraOn: true } or { ScreenOn: true };
@@ -3675,7 +3721,8 @@ else
                     name = target.Name,
                     tone = target.ColorIndex,
                     speaking = target.Speaking,
-                    follow = FocusedParticipant is null
+                    follow = PipFollowsActiveSpeaker,
+                    selfId = Guest.Id
                 });
 
             if (!opened)
@@ -3698,6 +3745,17 @@ else
     {
         if (string.IsNullOrWhiteSpace(peerId))
         {
+            return;
+        }
+
+        if (peerId == Guest.Id)
+        {
+            if (_focusedPeerId is not null)
+            {
+                _focusedPeerId = null;
+                _panelOpen = false;
+                _ = UpdatePipFocusAsync();
+            }
             return;
         }
 
@@ -3725,7 +3783,8 @@ else
                     name = target.Name,
                     tone = target.ColorIndex,
                     speaking = target.Speaking,
-                    follow = _focusedPeerId is null
+                    follow = PipFollowsActiveSpeaker,
+                    selfId = Guest.Id
                 };
             await JS.InvokeVoidAsync("onda.updatePipTarget", payload);
         }

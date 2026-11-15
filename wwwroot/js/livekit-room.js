@@ -1950,10 +1950,20 @@ function handleTrackUnsubscribed(track, publication, participant) {
     }
 }
 
+function normalizePipPeerId(identity) {
+    if (typeof identity !== "string") {
+        return "";
+    }
+    return identity.endsWith("-viewer")
+        ? identity.slice(0, -"-viewer".length)
+        : identity;
+}
+
 function handleActiveSpeakersChanged(speakers) {
+    const selfPeerId = normalizePipPeerId(selfId);
     const primary = (speakers || [])
-        .map((speaker) => speaker?.identity)
-        .find((identity) => typeof identity === "string" && identity.length > 0);
+        .map((speaker) => normalizePipPeerId(speaker?.identity))
+        .find((identity) => identity && identity !== selfPeerId);
 
     if (!primary) {
         pendingPipPeerId = null;
@@ -1961,14 +1971,17 @@ function handleActiveSpeakersChanged(speakers) {
             clearTimeout(pipSwitchTimer);
             pipSwitchTimer = null;
         }
+
+        const fallbackCard = Array.from(
+            document.querySelectorAll(".pip-audio-card[data-peer-id]")
+        ).find((card) => card.dataset.peerId !== selfPeerId);
+        if (fallbackCard?.dataset.peerId) {
+            setPipSpeaker(fallbackCard.dataset.peerId);
+        }
         return;
     }
 
-    const peerId = primary.endsWith("-viewer")
-        ? primary.slice(0, -"-viewer".length)
-        : primary;
-
-    schedulePipSpeaker(peerId);
+    schedulePipSpeaker(primary);
 }
 
 function schedulePipSpeaker(peerId) {
@@ -2015,9 +2028,11 @@ function schedulePipSpeaker(peerId) {
 }
 
 function setPipSpeaker(peerId) {
-    if (!peerId) {
+    const normalizedPeerId = normalizePipPeerId(peerId);
+    if (!normalizedPeerId || normalizedPeerId === normalizePipPeerId(selfId)) {
         return;
     }
+    peerId = normalizedPeerId;
 
     lastPipPeerId = peerId;
     ensurePipObserver();
