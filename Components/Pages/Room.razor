@@ -1512,18 +1512,18 @@ else
             </a>
         </div>
 
-        <button type="button" class="share-hub-native" @onclick="ShareViaWindowsAsync">
+        <a class="share-hub-native" href="@ShareBrowserUrl" target="_blank" rel="noreferrer">
             <span class="share-hub-native-icon"><Icon Name="share" Size="20" /></span>
             <span class="share-hub-native-copy">
-                <strong>Mais aplicativos do Windows</strong>
-                <small>Abrir a folha de compartilhamento do sistema.</small>
+                <strong>Abrir no navegador</strong>
+                <small>Usar os contatos e aplicativos da central do Chrome ou Edge.</small>
             </span>
             <Icon Name="external" Size="16" />
-        </button>
+        </a>
 
         <p class="share-hub-note">
-            O Windows mostra os aplicativos instalados no computador. Os contatos recentes
-            do navegador não ficam disponíveis para o aplicativo desktop.
+            A folha nativa do Windows não está disponível de forma estável no aplicativo
+            desktop. O navegador abre a central completa de compartilhamento do sistema.
         </p>
     </div>
 </Modal>
@@ -4177,6 +4177,21 @@ else
     private string LinkedInShareUrl =>
         $"https://www.linkedin.com/sharing/share-offsite/?url={ShareUrlEncoded}";
 
+    private string ShareBrowserUrl
+    {
+        get
+        {
+            var builder = new UriBuilder(new Uri(RoomUrl))
+            {
+                Path = "/compartilhar",
+                Query = $"url={ShareUrlEncoded}"
+                    + $"&title={Uri.EscapeDataString(_room?.Name ?? "Onda")}"
+                    + $"&text={ShareMessageEncoded}"
+            };
+            return builder.Uri.ToString();
+        }
+    }
+
     private async Task ShareRoomLinkFromMenuAsync()
     {
         CloseRoomMenus();
@@ -4193,13 +4208,6 @@ else
     private void CloseShareHub()
     {
         _shareHubOpen = false;
-    }
-
-    private async Task ShareViaWindowsAsync()
-    {
-        _shareHubOpen = false;
-        StateHasChanged();
-        await ShareRoomLinkAsync();
     }
 
     private async Task ShareRoomLinkAsync()

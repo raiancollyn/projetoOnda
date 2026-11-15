@@ -1,0 +1,105 @@
+@page "/compartilhar"
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+<PageTitle>Compartilhar · Onda</PageTitle>
+
+<main class="share-page">
+    <section class="share-page-card">
+        <span class="eyebrow">COMPARTILHAR</span>
+        <h1>@(string.IsNullOrWhiteSpace(ShareTitle) ? "Compartilhar link" : ShareTitle)</h1>
+        <p class="share-page-text">
+            @(string.IsNullOrWhiteSpace(ShareText)
+                ? "Escolha um aplicativo para enviar o link da sala."
+                : ShareText)
+        </p>
+
+        <div class="share-page-link">
+            <Icon Name="link" Size="17" />
+            <span>@ShareUrl</span>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_message))
+        {
+            <p class="share-page-message">@_message</p>
+        }
+
+        <div class="share-page-actions">
+            <button type="button" class="share-page-primary" @onclick="ShareAsync">
+                <Icon Name="share" Size="17" />
+                Compartilhar
+            </button>
+            <button type="button" class="share-page-secondary" @onclick="CopyAsync">
+                <Icon Name="copy" Size="16" />
+                Copiar link
+            </button>
+        </div>
+
+        <p class="share-page-note">
+            O compartilhamento usa os aplicativos e contatos disponíveis no seu navegador.
+        </p>
+    </section>
+</main>
+
+@code {
+    [SupplyParameterFromQuery(Name = "url")]
+    public string? ShareUrl { get; set; }
+
+    [SupplyParameterFromQuery(Name = "title")]
+    public string? ShareTitle { get; set; }
+
+    [SupplyParameterFromQuery(Name = "text")]
+    public string? ShareText { get; set; }
+
+    private string? _message;
+
+    private async Task ShareAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ShareUrl))
+        {
+            _message = "O link da sala não foi informado.";
+            return;
+        }
+
+        try
+        {
+            var result = await JS.InvokeAsync<string>("onda.shareRoomLink", new
+            {
+                title = string.IsNullOrWhiteSpace(ShareTitle) ? "Onda" : ShareTitle,
+                text = ShareText ?? "",
+                url = ShareUrl
+            });
+
+            _message = result switch
+            {
+                "shared" => "Link compartilhado.",
+                "aborted" or "cancelled" => "Compartilhamento cancelado.",
+                "unsupported" => "Este navegador não oferece o compartilhamento nativo.",
+                _ => "Não foi possível abrir o compartilhamento."
+            };
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            _message = "Não foi possível abrir o compartilhamento.";
+        }
+    }
+
+    private async Task CopyAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ShareUrl))
+        {
+            _message = "O link da sala não foi informado.";
+            return;
+        }
+
+        try
+        {
+            var copied = await JS.InvokeAsync<bool>("onda.copyText", ShareUrl);
+            _message = copied ? "Link copiado." : "Não foi possível copiar o link.";
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            _message = "Não foi possível copiar o link.";
+        }
+    }
+}
