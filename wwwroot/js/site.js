@@ -2387,7 +2387,6 @@
                 {
                     body: message.length > 180 ? `${message.slice(0, 177)}...` : message,
                     icon: "/og/onda-share.png",
-                    tag: "onda-chat",
                     silent: true
                 });
             notification.onclick = () => {

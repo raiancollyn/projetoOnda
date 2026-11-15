@@ -2860,7 +2860,10 @@ else
             if (incoming.Length > 0)
             {
                 PlayRoomSound("message");
-                NotifyChat(incoming[^1]);
+                foreach (var message in incoming.TakeLast(5))
+                {
+                    NotifyChat(message);
+                }
             }
         }
 
