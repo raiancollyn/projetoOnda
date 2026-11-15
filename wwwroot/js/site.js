@@ -1614,6 +1614,40 @@
         return Boolean(result?.applied);
     }
 
+    async function getNativeNoiseSuppression() {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            return true;
+        }
+
+        const result = await plugin.getAudioProcessing();
+        return result?.noiseSuppression !== false;
+    }
+
+    async function getNativeEchoCancellation() {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            return true;
+        }
+
+        const result = await plugin.getAudioProcessing();
+        return result?.echoCancellation !== false;
+    }
+
+    async function setNativeAudioProcessing(noiseSuppression, echoCancellation) {
+        const plugin = nativeMediaPlugin();
+        if (!plugin) {
+            return false;
+        }
+
+        const result = await plugin.setAudioProcessing({
+            noiseSuppression: Boolean(noiseSuppression),
+            echoCancellation: Boolean(echoCancellation)
+        });
+        return result?.noiseSuppression === Boolean(noiseSuppression) &&
+            result?.echoCancellation === Boolean(echoCancellation);
+    }
+
     async function getNativeCameraOptions() {
         const plugin = nativeMediaPlugin();
         if (!plugin) {
@@ -1912,6 +1946,24 @@
     let presenceHeartbeatTimer = null;
     let presenceHeartbeatRoom = null;
     let presenceHeartbeatGuest = null;
+    let visibilityDotNetRef = null;
+    let visibilityListenerInstalled = false;
+
+    function registerVisibilityListener(dotNetRef) {
+        visibilityDotNetRef = dotNetRef;
+        if (visibilityListenerInstalled) {
+            return;
+        }
+
+        visibilityListenerInstalled = true;
+        document.addEventListener("visibilitychange", () => {
+            if (!document.hidden && visibilityDotNetRef) {
+                void visibilityDotNetRef.invokeMethodAsync("OnPageVisible").catch(() => {
+                    // The Blazor circuit may be reconnecting.
+                });
+            }
+        });
+    }
 
     function stopPresenceHeartbeat() {
         if (presenceHeartbeatTimer) {
@@ -2160,6 +2212,7 @@
         setMediaFit,
         startPresenceHeartbeat,
         stopPresenceHeartbeat,
+        registerVisibilityListener,
         isNativeMobile,
         startNativeCall,
         stopNativeCall,
@@ -2174,6 +2227,9 @@
         stopNativeScreenShare,
         getNativeScreenShare,
         setNativeScreenQuality,
+        getNativeNoiseSuppression,
+        getNativeEchoCancellation,
+        setNativeAudioProcessing,
         registerNativeMicListener,
         getNativeMic,
         registerExitGuard,

@@ -20,7 +20,7 @@ public sealed class RoomService
     private const int PasswordHashBytes = 32;
     private const int MaxSignalPayloadLength = 262_144;
 
-    public static readonly TimeSpan StaleParticipantAfter = TimeSpan.FromMinutes(2);
+    public static readonly TimeSpan StaleParticipantAfter = TimeSpan.FromMinutes(5);
 
     // The native service owns audio/video independently of the suspended WebView.
     // Keep a long lease so delayed HTTP heartbeats do not remove a live call.

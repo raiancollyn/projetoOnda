@@ -1030,6 +1030,43 @@ else
                    @bind:after="ApplyNativeOutputVolumeAsync" />
             <span>@_audioOutputVolume%</span>
         </div>
+        <div class="audio-settings-section">
+            <div class="audio-settings-heading">
+                <span class="audio-route-icon"><Icon Name="mic" Size="18" /></span>
+                <div>
+                    <strong>Processamento de voz</strong>
+                    <small>Aplicado ao microfone da chamada</small>
+                </div>
+            </div>
+            <label class="camera-toggle-row">
+                <span>
+                    <Icon Name="wave" Size="17" />
+                    <span>
+                        <strong>Supressão de ruído</strong>
+                        <small>Reduz ruídos constantes como ventilador e trânsito.</small>
+                    </span>
+                </span>
+                <input type="checkbox"
+                       checked="@_nativeNoiseSuppression"
+                       @onchange="ToggleNativeNoiseSuppressionAsync"
+                       disabled="@_audioProcessingBusy"
+                       aria-label="Ativar ou desativar supressão de ruído" />
+            </label>
+            <label class="camera-toggle-row">
+                <span>
+                    <Icon Name="volume-off" Size="17" />
+                    <span>
+                        <strong>Cancelamento de eco</strong>
+                        <small>Evita que o som da sala volte pelo seu microfone.</small>
+                    </span>
+                </span>
+                <input type="checkbox"
+                       checked="@_nativeEchoCancellation"
+                       @onchange="ToggleNativeEchoCancellationAsync"
+                       disabled="@_audioProcessingBusy"
+                       aria-label="Ativar ou desativar cancelamento de eco" />
+            </label>
+        </div>
         <p class="quality-note">
             Conecte o Bluetooth ou o fone com fio antes de abrir esta lista. O volume usa a saída de mídia do Android.
         </p>
@@ -1544,6 +1581,8 @@ else
     private bool _jsReady;
     private bool _nativeMedia;
     private bool _presenceHeartbeatStarted;
+    private bool _presenceRejoinBusy;
+    private bool _visibilityListenerInstalled;
     private bool _jsInitializing;
     private string? _jsError;
     private bool _audioBlocked;
@@ -1594,6 +1633,9 @@ else
     private bool _exitGuardStarted;
     private bool _audioRouteBusy;
     private bool _audioNativeMode;
+    private bool _nativeNoiseSuppression = true;
+    private bool _nativeEchoCancellation = true;
+    private bool _audioProcessingBusy;
     private bool _audioCanSelectOutput;
     private IReadOnlyList<NativeAudioDeviceView> _audioRouteDevices = [];
     private IReadOnlyList<AudioDeviceView> _audioInputDevices = [];
@@ -1863,6 +1905,20 @@ else
             }
         }
 
+        if (_joined && !_visibilityListenerInstalled)
+        {
+            _visibilityListenerInstalled = true;
+            try
+            {
+                _dotNetRef ??= DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("onda.registerVisibilityListener", _dotNetRef);
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                _visibilityListenerInstalled = false;
+            }
+        }
+
         if (_joined && !_exitGuardStarted)
         {
             _exitGuardStarted = true;
@@ -2087,6 +2143,8 @@ else
                         nativeMicOn = await JS.InvokeAsync<bool>("onda.getNativeMic");
                         nativeCameraOn = await JS.InvokeAsync<bool>("onda.getNativeCamera");
                         nativeScreenOn = await JS.InvokeAsync<bool>("onda.getNativeScreenShare");
+                        _nativeNoiseSuppression = await JS.InvokeAsync<bool>("onda.getNativeNoiseSuppression");
+                        _nativeEchoCancellation = await JS.InvokeAsync<bool>("onda.getNativeEchoCancellation");
                     }
                     catch (Exception ex) when (ex is JSException or JSDisconnectedException)
                     {
@@ -2463,10 +2521,59 @@ else
 
         if (_self is null)
         {
-            _sessionExpired = true;
-            _ = DisableRoomExitGuardAsync();
+            TryRestorePresence();
             return;
         }
+    }
+
+    private void TryRestorePresence()
+    {
+        if (_disposed || _presenceRejoinBusy)
+        {
+            return;
+        }
+
+        _presenceRejoinBusy = true;
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                var result = Rooms.JoinRoom(Code, Guest.Id, Guest.AvatarTone, Guest.Name, _gatePassword);
+                if (result.Status == JoinRoomStatus.Success && result.Room is not null)
+                {
+                    _room = result.Room;
+                    _self = result.Room.Participants.FirstOrDefault(p => p.Id == Guest.Id);
+                    if (_self is not null)
+                    {
+                        _sessionExpired = false;
+                        try
+                        {
+                            await JS.InvokeVoidAsync("onda.startPresenceHeartbeat", Code, Guest.Id);
+                        }
+                        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+                        {
+                            // Native mode already has its own heartbeat.
+                        }
+
+                        StateHasChanged();
+                    }
+                }
+                else
+                {
+                    _sessionExpired = true;
+                    _ = DisableRoomExitGuardAsync();
+                }
+            }
+            catch
+            {
+                _sessionExpired = true;
+                _ = DisableRoomExitGuardAsync();
+            }
+            finally
+            {
+                _presenceRejoinBusy = false;
+            }
+        });
     }
 
     private void HandleChatChanged(string roomId)
@@ -2565,8 +2672,36 @@ else
     }
 
     [JSInvokable]
-    public Task OnNativeMicChanged(bool enabled)
+    public Task OnPageVisible()
     {
+        if (_disposed || !_joined)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (_self is null)
+        {
+            TryRestorePresence();
+            return Task.CompletedTask;
+        }
+
+        _presenceHeartbeatStarted = true;
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("onda.startPresenceHeartbeat", Code, Guest.Id);
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+            {
+                // Native mode still sends its own heartbeat.
+            }
+        });
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnNativeMicChanged(bool enabled)    {
         if (_disposed || !_nativeMedia)
         {
             return Task.CompletedTask;
@@ -3869,9 +4004,55 @@ else
         }
     }
 
-    private async Task ApplyNativeOutputVolumeAsync()
+    private async Task ToggleNativeNoiseSuppressionAsync(ChangeEventArgs args)
     {
-        if (!_audioNativeMode)
+        _nativeNoiseSuppression = args.Value is true;
+        await ApplyNativeAudioProcessingAsync();
+    }
+
+    private async Task ToggleNativeEchoCancellationAsync(ChangeEventArgs args)
+    {
+        _nativeEchoCancellation = args.Value is true;
+        await ApplyNativeAudioProcessingAsync();
+    }
+
+    private async Task ApplyNativeAudioProcessingAsync()
+    {
+        if (!_nativeMedia || _audioProcessingBusy)
+        {
+            return;
+        }
+
+        _audioProcessingBusy = true;
+        StateHasChanged();
+        try
+        {
+            var applied = await JS.InvokeAsync<bool>(
+                "onda.setNativeAudioProcessing",
+                _nativeNoiseSuppression,
+                _nativeEchoCancellation);
+            if (!applied)
+            {
+                Toasts.Show(
+                    "Não foi possível aplicar o processamento de áudio.",
+                    ToastKind.Error);
+            }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            Toasts.Show(
+                "Não foi possível aplicar o processamento de áudio.",
+                ToastKind.Error);
+        }
+        finally
+        {
+            _audioProcessingBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ApplyNativeOutputVolumeAsync()
+    {        if (!_audioNativeMode)
         {
             return;
         }
