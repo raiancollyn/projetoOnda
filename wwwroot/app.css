@@ -899,6 +899,11 @@ html.onda-pip .focus-rail {
     display: none !important;
 }
 
+html.onda-pip:not(.onda-pip-pinned) .focus-card-layout,
+html.onda-pip:not(.onda-pip-pinned) .spotlight-layout {
+    display: none !important;
+}
+
 html.onda-pip .spotlight-strip {
     display: none;
 }

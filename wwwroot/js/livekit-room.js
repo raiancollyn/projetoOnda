@@ -60,6 +60,8 @@ let lastPipPeerId = null;
 let pendingPipPeerId = null;
 let pipSwitchTimer = null;
 let lastPipSwitchAt = 0;
+let pipPinnedPeerId = null;
+let lastActivePipPeerId = null;
 let micAcquirePromise = null;
 let cameraBusy = false;
 let screenBusy = false;
@@ -1959,11 +1961,46 @@ function normalizePipPeerId(identity) {
         : identity;
 }
 
-function handleActiveSpeakersChanged(speakers) {
+export function setPipFocus(peerId) {
+    const normalized = normalizePipPeerId(peerId);
     const selfPeerId = normalizePipPeerId(selfId);
+    pipPinnedPeerId = normalized && normalized !== selfPeerId ? normalized : null;
+    document.documentElement.classList.toggle("onda-pip-pinned", Boolean(pipPinnedPeerId));
+
+    pendingPipPeerId = null;
+    if (pipSwitchTimer) {
+        clearTimeout(pipSwitchTimer);
+        pipSwitchTimer = null;
+    }
+
+    if (pipPinnedPeerId) {
+        setPipSpeaker(pipPinnedPeerId);
+        return;
+    }
+
+    if (lastActivePipPeerId) {
+        schedulePipSpeaker(lastActivePipPeerId);
+        return;
+    }
+
+    const fallbackCard = Array.from(
+        document.querySelectorAll(".pip-audio-card[data-peer-id]")
+    ).find((card) => card.dataset.peerId !== selfPeerId);
+    if (fallbackCard?.dataset.peerId) {
+        setPipSpeaker(fallbackCard.dataset.peerId);
+    }
+}
+
+function handleActiveSpeakersChanged(speakers) {    const selfPeerId = normalizePipPeerId(selfId);
     const primary = (speakers || [])
         .map((speaker) => normalizePipPeerId(speaker?.identity))
         .find((identity) => identity && identity !== selfPeerId);
+    lastActivePipPeerId = primary || null;
+
+    if (pipPinnedPeerId) {
+        setPipSpeaker(pipPinnedPeerId);
+        return;
+    }
 
     if (!primary) {
         pendingPipPeerId = null;

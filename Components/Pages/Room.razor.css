@@ -4526,3 +4526,8 @@ html[data-theme="light"] .focus-card-hint {
 .focus-live-bars i {
     width: 3px;
 }
+.stage-pin-control.is-on {
+    border-color: rgba(205, 242, 124, 0.35);
+    background: rgba(205, 242, 124, 0.1);
+    color: var(--lime);
+}

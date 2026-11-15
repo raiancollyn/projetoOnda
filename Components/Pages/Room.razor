@@ -404,6 +404,17 @@ else
                                         <Icon Name="grid" Size="14" /> Ver grade
                                     </button>
                                 }
+                                @if (FocusedParticipant is not null)
+                                {
+                                    <button type="button"
+                                            class="stage-grid-button stage-pin-control @(IsPipPinned ? "is-on" : null)"
+                                            @onclick="TogglePinnedPipAsync"
+                                            aria-pressed="@(IsPipPinned ? "true" : "false")"
+                                            title="@(IsPipPinned ? "Voltar às alternâncias do PiP" : "Fixar esta pessoa no PiP")">
+                                        <Icon Name="@(IsPipPinned ? "unlock" : "lock")" Size="14" />
+                                        <span class="stage-button-label">@(IsPipPinned ? "Soltar PiP" : "Fixar PiP")</span>
+                                    </button>
+                                }
                                 @if (!_nativeMedia)
                                 {
                                     <button type="button"
@@ -1908,6 +1919,7 @@ else
     private bool _screenAudioWarningShown;
 
     private string? _focusedPeerId;
+    private string? _pinnedPipPeerId;
     private bool? _mediaFit;
     private string? _volumePeerId;
     private bool _panelOpen;
@@ -2041,14 +2053,19 @@ else
     private ParticipantView? ActiveSpeaker =>
         _room?.Participants.FirstOrDefault(p => p.Speaking);
 
+    private ParticipantView? PinnedPipParticipant =>
+        _pinnedPipPeerId is null
+            ? null
+            : _room?.Participants.FirstOrDefault(p => p.Id == _pinnedPipPeerId);
+
     private ParticipantView? PipTarget
     {
         get
         {
-            var focused = FocusedParticipant;
-            if (focused is not null && focused.Id != Guest.Id)
+            var pinned = PinnedPipParticipant;
+            if (pinned is not null)
             {
-                return focused;
+                return pinned;
             }
 
             return ActiveSpeaker is { } speaker && speaker.Id != Guest.Id
@@ -2058,8 +2075,9 @@ else
         }
     }
 
-    private bool PipFollowsActiveSpeaker =>
-        FocusedParticipant is null || FocusedParticipant.Id == Guest.Id;
+    private bool PipFollowsActiveSpeaker => _pinnedPipPeerId is null;
+
+    private bool IsPipPinned => _pinnedPipPeerId is not null;
 
     private bool FocusedHasMedia =>
         FocusedParticipant is { CameraOn: true } or { ScreenOn: true };
@@ -2895,10 +2913,30 @@ else
             _screenVolumes.TryAdd(participant.Id, 80);
         }
 
+        var pipFocusChanged = false;
+
+        if (_pinnedPipPeerId is not null &&
+            room.Participants.All(p => p.Id != _pinnedPipPeerId))
+        {
+            _pinnedPipPeerId = null;
+            pipFocusChanged = true;
+        }
+
         if (_focusedPeerId is not null &&
             room.Participants.All(p => p.Id != _focusedPeerId))
         {
             _focusedPeerId = null;
+            _pinnedPipPeerId = null;
+            pipFocusChanged = true;
+        }
+
+        if (_pinnedPipPeerId is not null)
+        {
+            _focusedPeerId = _pinnedPipPeerId;
+        }
+
+        if (pipFocusChanged)
+        {
             _ = UpdatePipFocusAsync();
         }
 
@@ -3749,6 +3787,18 @@ else
             return;
         }
 
+        if (_pinnedPipPeerId is not null)
+        {
+            if (peerId != _pinnedPipPeerId)
+            {
+                Toasts.Show(
+                    "O PiP está fixado. Solte a fixação para trocar o participante em foco.",
+                    ToastKind.Info,
+                    4500);
+            }
+            return;
+        }
+
         if (peerId == Guest.Id)
         {
             if (_focusedPeerId is not null)
@@ -3765,9 +3815,24 @@ else
         _ = UpdatePipFocusAsync();
     }
 
+    private async Task TogglePinnedPipAsync()
+    {
+        if (FocusedParticipant is null)
+        {
+            return;
+        }
+
+        _pinnedPipPeerId = _pinnedPipPeerId is null
+            ? FocusedParticipant.Id
+            : null;
+
+        await UpdatePipFocusAsync();
+    }
+
     private void ClearFocus()
     {
         _focusedPeerId = null;
+        _pinnedPipPeerId = null;
         _ = UpdatePipFocusAsync();
     }
 
@@ -3792,6 +3857,18 @@ else
         catch (Exception ex) when (ex is JSException or JSDisconnectedException)
         {
             // O circuito pode estar sendo encerrado durante a troca de foco.
+        }
+
+        try
+        {
+            if (_jsModule is not null)
+            {
+                await _jsModule.InvokeVoidAsync("setPipFocus", _pinnedPipPeerId);
+            }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or ObjectDisposedException)
+        {
+            // A camada nativa ou o circuito pode não estar disponível.
         }
     }
 

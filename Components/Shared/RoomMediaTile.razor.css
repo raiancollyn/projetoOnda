@@ -134,6 +134,10 @@
 }
 
 .media-focus-hint {
+    height: 2rem;
+    padding: 0 0.8rem;
+    justify-content: center;
+    font-size: 0.62rem;
     opacity: 0;
     transform: translateY(-2px);
     transition: opacity 180ms ease, transform 180ms ease;
@@ -154,7 +158,7 @@
 }
 
 .media-tile.has-fullscreen .media-focus-hint {
-    margin-right: 2.2rem;
+    margin-right: 5.5rem;
 }
 
 .media-caption {
@@ -366,6 +370,12 @@
 }
 
 @media (max-width: 700px) {
+    .media-topline {
+        top: 0.45rem;
+        left: 0.45rem;
+        right: 0.45rem;
+    }
+
     .media-fullscreen-button,
 .media-fit-button {
         top: 0.45rem;
@@ -445,13 +455,18 @@
         right: 2.6rem;
     }
 
+    .media-focus-hint {
+        height: 1.8rem;
+        padding: 0 0.65rem;
+    }
+
     .media-tile.has-fullscreen .media-focus-hint {
-        margin-right: 3.5rem;
+        margin-right: 4.3rem;
     }
 }
 
 .media-tile.has-fullscreen .media-focus-hint {
-    margin-right: 3.8rem;
+    margin-right: 4.9rem;
 }
 /* A dica "Ver grade" fica só no palco; em tela cheia ela vira o botão de saída. */
 .media-tile.is-featured .media-focus-hint {
