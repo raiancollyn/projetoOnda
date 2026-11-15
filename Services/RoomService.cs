@@ -810,7 +810,7 @@ public sealed class RoomService
             micOn = micOn && !participant.MicBlocked && !punished;
             cameraOn = cameraOn && !participant.CameraBlocked && !punished;
             screenOn = screenOn && !participant.ScreenBlocked && !punished;
-            screenWithAudio = screenOn && screenWithAudio;
+            screenWithAudio = screenOn && screenWithAudio && !participant.ScreenAudioBlocked;
 
             changed =
                 participant.MicOn != micOn ||
@@ -1293,7 +1293,8 @@ public sealed class RoomService
                 p.MicBlocked,
                 p.CameraBlocked,
                 p.ScreenBlocked,
-                p.ChatBlocked))
+                p.ChatBlocked,
+                p.ScreenAudioBlocked))
             .ToArray();
 
         IReadOnlyList<ChatMessageView> messages = includeMessages
@@ -1363,6 +1364,7 @@ public sealed class RoomService
                     target.CameraBlocked = blocked;
                     target.ScreenBlocked = blocked;
                     target.ChatBlocked = blocked;
+                    target.ScreenAudioBlocked = blocked;
                     break;
                 case "mic":
                     target.MicBlocked = blocked;
@@ -1372,6 +1374,13 @@ public sealed class RoomService
                     break;
                 case "screen":
                     target.ScreenBlocked = blocked;
+                    break;
+                case "screen-audio":
+                    target.ScreenAudioBlocked = blocked;
+                    if (blocked)
+                    {
+                        target.ScreenWithAudio = false;
+                    }
                     break;
                 case "chat":
                     target.ChatBlocked = blocked;
@@ -1406,6 +1415,7 @@ public sealed class RoomService
                 "mic" => "o microfone",
                 "camera" => "a câmera",
                 "screen" => "a tela",
+                "screen-audio" => "o som da tela",
                 _ => "o chat"
             };
             var verb = blocked ? "bloqueou" : "desbloqueou";
@@ -2144,6 +2154,7 @@ public sealed class RoomService
         public bool CameraBlocked { get; set; }
         public bool ScreenBlocked { get; set; }
         public bool ChatBlocked { get; set; }
+        public bool ScreenAudioBlocked { get; set; }
         public DateTimeOffset? PunishedUntil { get; set; }
     }
 }

@@ -16,7 +16,8 @@ public sealed record ParticipantView(
     bool MicBlocked = false,
     bool CameraBlocked = false,
     bool ScreenBlocked = false,
-    bool ChatBlocked = false);
+    bool ChatBlocked = false,
+    bool ScreenAudioBlocked = false);
 
 public sealed record ChatMessageView(
     string Id,

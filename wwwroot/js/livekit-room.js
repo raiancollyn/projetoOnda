@@ -1606,9 +1606,10 @@ async function stopCameraSession(notifyServer) {
 /* Screen share                                                       */
 /* ------------------------------------------------------------------ */
 
-function buildScreenCaptureOptions() {
+function buildScreenCaptureOptions(allowAudio = true) {
+    const withAudio = Boolean(allowAudio);
     return {
-        audio: true,
+        audio: withAudio,
         resolution: {
             width: quality.width,
             height: quality.height,
@@ -1617,7 +1618,7 @@ function buildScreenCaptureOptions() {
         contentHint: quality.contentMode === "motion" ? "motion" : "detail",
         selfBrowserSurface: "exclude",
         surfaceSwitching: "include",
-        systemAudio: "include"
+        systemAudio: withAudio ? "include" : "exclude"
     };
 }
 
@@ -1693,7 +1694,7 @@ async function publishScreenTracks(videoTrack, audioTrack, audioEnabled = true) 
     return true;
 }
 
-export async function toggleScreenShare() {
+export async function toggleScreenShare(allowAudio = true) {
     if (!initialized || !room || screenBusy) {
         return;
     }
@@ -1720,7 +1721,7 @@ export async function toggleScreenShare() {
     try {
         let tracks;
         try {
-            tracks = await createLocalScreenTracks(buildScreenCaptureOptions());
+            tracks = await createLocalScreenTracks(buildScreenCaptureOptions(allowAudio));
         } catch (error) {
             if (error?.name !== "NotAllowedError" && error?.name !== "AbortError") {
                 notifyError("screen", screenErrorMessage(error));
@@ -1761,7 +1762,7 @@ export async function toggleScreenShare() {
     }
 }
 
-export async function switchScreenSource() {
+export async function switchScreenSource(allowAudio = true) {
     if (!initialized || !room || screenBusy || !local.screenOn) {
         return false;
     }
@@ -1770,7 +1771,7 @@ export async function switchScreenSource() {
     try {
         let tracks;
         try {
-            tracks = await createLocalScreenTracks(buildScreenCaptureOptions());
+            tracks = await createLocalScreenTracks(buildScreenCaptureOptions(allowAudio));
         } catch (error) {
             if (error?.name !== "NotAllowedError" && error?.name !== "AbortError") {
                 notifyError("screen", screenErrorMessage(error));

@@ -469,7 +469,7 @@ else
                                             aria-label="@ScreenAudioActionLabel"
                                             aria-pressed="@(_localScreenAudioEnabled ? "true" : "false")"
                                             title="@ScreenAudioTitle"
-                                            disabled="@(!_localScreenWithAudio || _actionPending is not null)"
+                                            disabled="@(!_localScreenWithAudio || _actionPending is not null || !CanUseScreenAudio)"
                                             @onclick="ToggleScreenAudioAsync">
                                         <Icon Name="@(_localScreenWithAudio && _localScreenAudioEnabled ? "volume" : "volume-off")" Size="14" />
                                         <span class="stage-button-label">@ScreenAudioLabel</span>
@@ -1969,7 +1969,7 @@ else
                 </div>
                 <div class="admin-block-grid">
                     <button type="button"
-                            class="admin-block-option @(target.MicBlocked && target.CameraBlocked && target.ScreenBlocked && target.ChatBlocked ? "is-on" : null)"
+                            class="admin-block-option @(target.MicBlocked && target.CameraBlocked && target.ScreenBlocked && target.ChatBlocked && target.ScreenAudioBlocked ? "is-on" : null)"
                             disabled="@_adminBusy"
                             @onclick="() => ToggleAllBlocksAsync(target)">
                         <Icon Name="lock" Size="16" />
@@ -1996,6 +1996,16 @@ else
                         <Icon Name="screen-off" Size="16" />
                         <span>Tela</span>
                     </button>
+                    @if (!target.ScreenBlocked)
+                    {
+                        <button type="button"
+                                class="admin-block-option @(target.ScreenAudioBlocked ? "is-on" : null)"
+                                disabled="@_adminBusy"
+                                @onclick="() => SetScreenAudioBlockAsync(target)">
+                            <Icon Name="volume-off" Size="16" />
+                            <span>Som da tela</span>
+                        </button>
+                    }
                     <button type="button"
                             class="admin-block-option @(target.ChatBlocked ? "is-on" : null)"
                             disabled="@_adminBusy"
@@ -2541,6 +2551,9 @@ else
     private bool CanUseScreen =>
         _self is null || (!_self.ScreenBlocked && !IsPunishedNow(_self));
 
+    private bool CanUseScreenAudio =>
+        _self is null || !_self.ScreenAudioBlocked;
+
     private bool IsPunishedNow(ParticipantView participant) =>
         participant.PunishedUntil is { } until && until > _moderationNow;
 
@@ -2703,7 +2716,7 @@ else
     private async Task ToggleAllBlocksAsync(ParticipantView target)
     {
         var allBlocked = target.MicBlocked && target.CameraBlocked &&
-            target.ScreenBlocked && target.ChatBlocked;
+            target.ScreenBlocked && target.ChatBlocked && target.ScreenAudioBlocked;
         await SetBlockAsync(target, "all", !allBlocked);
     }
 
@@ -2740,6 +2753,9 @@ else
 
     private Task SetScreenBlockAsync(ParticipantView target) =>
         SetBlockAsync(target, "screen", !target.ScreenBlocked);
+
+    private Task SetScreenAudioBlockAsync(ParticipantView target) =>
+        SetBlockAsync(target, "screen-audio", !target.ScreenAudioBlocked);
 
     private Task SetChatBlockAsync(ParticipantView target) =>
         SetBlockAsync(target, "chat", !target.ChatBlocked);
@@ -3215,6 +3231,16 @@ else
                 else if (_jsModule is not null)
                 {
                     await _jsModule.InvokeVoidAsync("toggleScreenShare");
+                }
+            }
+
+            if (_localScreenWithAudio && !CanUseScreenAudio && _jsModule is not null)
+            {
+                var muted = await _jsModule.InvokeAsync<bool>("setScreenAudioEnabled", false);
+                if (muted)
+                {
+                    _localScreenAudioEnabled = false;
+                    await InvokeAsync(StateHasChanged);
                 }
             }
         }
@@ -4641,7 +4667,7 @@ else
         _actionPending = "screen";
         try
         {
-            await _jsModule.InvokeVoidAsync("toggleScreenShare");
+            await _jsModule.InvokeVoidAsync("toggleScreenShare", CanUseScreenAudio);
         }
         catch (Exception ex) when (ex is JSException or JSDisconnectedException)
         {
@@ -4723,7 +4749,7 @@ else
         _actionPending = "screen";
         try
         {
-            await _jsModule.InvokeAsync<bool>("switchScreenSource");
+            await _jsModule.InvokeAsync<bool>("switchScreenSource", CanUseScreenAudio);
         }
         catch (Exception ex) when (ex is JSException or JSDisconnectedException)
         {
@@ -4738,7 +4764,8 @@ else
 
     private async Task ToggleScreenAudioAsync()
     {
-        if (_jsModule is null || _actionPending is not null || !_localScreenWithAudio)
+        if (_jsModule is null || _actionPending is not null || !_localScreenWithAudio ||
+            !CanUseScreenAudio)
         {
             return;
         }
@@ -4751,6 +4778,16 @@ else
             if (changed)
             {
                 _localScreenAudioEnabled = nextEnabled;
+                if (_joined)
+                {
+                    Rooms.UpdateMediaState(
+                        Code,
+                        Guest.Id,
+                        _localMicOn,
+                        _localCameraOn,
+                        _localScreenOn,
+                        _localScreenWithAudio);
+                }
                 Toasts.Show(
                     nextEnabled ? "Áudio da tela ativado." : "Áudio da tela silenciado.",
                     ToastKind.Info);
@@ -4771,19 +4808,25 @@ else
         }
     }
 
-    private string ScreenAudioLabel => !_localScreenWithAudio
-        ? "Sem áudio"
-        : _localScreenAudioEnabled ? "Som" : "Mudo";
+    private string ScreenAudioLabel => !CanUseScreenAudio
+        ? "Bloqueado"
+        : !_localScreenWithAudio
+            ? "Sem áudio"
+            : _localScreenAudioEnabled ? "Som" : "Mudo";
 
-    private string ScreenAudioActionLabel => !_localScreenWithAudio
-        ? "Áudio da tela indisponível"
-        : _localScreenAudioEnabled ? "Silenciar áudio da tela" : "Ativar áudio da tela";
+    private string ScreenAudioActionLabel => !CanUseScreenAudio
+        ? "Som da tela bloqueado pelo administrador"
+        : !_localScreenWithAudio
+            ? "Áudio da tela indisponível"
+            : _localScreenAudioEnabled ? "Silenciar áudio da tela" : "Ativar áudio da tela";
 
-    private string ScreenAudioTitle => !_localScreenWithAudio
-        ? (_isFirefox
-            ? "O Firefox não captura áudio da tela. Para transmitir som, use Chrome ou Edge."
-            : "Esta transmissão não foi iniciada com áudio. Troque a tela para incluir som.")
-        : _localScreenAudioEnabled ? "Silenciar áudio da tela" : "Ativar áudio da tela";
+    private string ScreenAudioTitle => !CanUseScreenAudio
+        ? "O administrador bloqueou o som da tela."
+        : !_localScreenWithAudio
+            ? (_isFirefox
+                ? "O Firefox não captura áudio da tela. Para transmitir som, use Chrome ou Edge."
+                : "Esta transmissão não foi iniciada com áudio. Troque a tela para incluir som.")
+            : _localScreenAudioEnabled ? "Silenciar áudio da tela" : "Ativar áudio da tela";
 
     private async Task ResumeAudioAsync()
     {
