@@ -888,6 +888,20 @@ html[data-theme="light"] .room-menu-item {
     color: var(--ink-soft);
 }
 
+html[data-theme="light"] .room-menu-item-icon {
+    border: 1px solid rgba(91, 126, 41, 0.16);
+    background: rgba(91, 126, 41, 0.12);
+    color: #4a641d;
+}
+
+html[data-theme="light"] .room-theme-choice .onda-icon {
+    color: #465d51;
+}
+
+html[data-theme="light"] .room-theme-choice[aria-checked="true"] .onda-icon {
+    color: #3d5412;
+}
+
 html[data-theme="light"] .room-menu-item:hover,
 html[data-theme="light"] .room-menu-item:focus-visible {
     background: rgba(21, 35, 31, 0.06);
