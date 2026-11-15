@@ -1219,6 +1219,20 @@ else
                     O navegador não oferece um nível contínuo; o perfil ajusta o ganho e os filtros disponíveis.
                 </span>
             </label>
+            <label class="camera-toggle-row">
+                <span>
+                    <Icon Name="sparkles" Size="17" />
+                    <span>
+                        <strong>Krisp (experimental)</strong>
+                        <small>Cancelamento avançado no navegador e no app desktop. Baixa o modelo na primeira ativação.</small>
+                    </span>
+                </span>
+                <input type="checkbox"
+                       checked="@_krispNoiseEnabled"
+                       @onchange="ToggleKrispNoiseAsync"
+                       disabled="@_audioProcessingBusy"
+                       aria-label="Ativar ou desativar cancelamento de ruído Krisp" />
+            </label>
         </div>
 
         <p class="quality-note">
@@ -1814,6 +1828,7 @@ else
     private bool _noiseSuppression = true;
     private bool _echoCancellation = true;
     private string _audioProcessingIntensity = "standard";
+    private bool _krispNoiseEnabled;
     private bool _audioProcessingBusy;
     private bool _audioCanSelectOutput;
     private IReadOnlyList<NativeAudioDeviceView> _audioRouteDevices = [];
@@ -4447,6 +4462,41 @@ else
         await ApplyAudioProcessingAsync();
     }
 
+    private async Task ToggleKrispNoiseAsync(ChangeEventArgs args)
+    {
+        if (_nativeMedia || _jsModule is null || _audioProcessingBusy)
+        {
+            return;
+        }
+
+        var enabled = args.Value is true;
+        _krispNoiseEnabled = enabled;
+        _audioProcessingBusy = true;
+        StateHasChanged();
+        try
+        {
+            var applied = await _jsModule.InvokeAsync<bool>("setKrispEnabled", enabled);
+            if (!applied)
+            {
+                _krispNoiseEnabled = false;
+                Toasts.Show(
+                    "O Krisp não está disponível neste navegador ou não conseguiu carregar o modelo.",
+                    ToastKind.Error,
+                    7000);
+            }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            _krispNoiseEnabled = false;
+            Toasts.Show("Não foi possível ativar o Krisp.", ToastKind.Error);
+        }
+        finally
+        {
+            _audioProcessingBusy = false;
+            StateHasChanged();
+        }
+    }
+
     private async Task ApplyAudioProcessingAsync()
     {
         if (_audioProcessingBusy || (!_nativeMedia && _jsModule is null))
@@ -4529,6 +4579,7 @@ else
             _audioProcessingIntensity = settings?.ProcessingIntensity is "soft" or "standard" or "aggressive"
                 ? settings.ProcessingIntensity
                 : "standard";
+            _krispNoiseEnabled = settings?.KrispEnabled ?? false;
         }
         catch (Exception ex) when (ex is JSException or JSDisconnectedException)
         {
@@ -4966,7 +5017,8 @@ else
         bool CanSelectOutput,
         bool NoiseSuppression,
         bool EchoCancellation,
-        string? ProcessingIntensity = null);
+        string? ProcessingIntensity = null,
+        bool KrispEnabled = false);
 
     private sealed record CameraOptionsView(
         IReadOnlyList<CameraDeviceView> Devices,

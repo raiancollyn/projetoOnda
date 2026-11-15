@@ -77,6 +77,9 @@ let outputVolume = storedAudioPreferences.outputVolume;
 let noiseSuppression = storedAudioPreferences.noiseSuppression;
 let echoCancellation = storedAudioPreferences.echoCancellation;
 let processingIntensity = storedAudioPreferences.processingIntensity;
+let krispEnabled = storedAudioPreferences.krispEnabled;
+let krispModulePromise = null;
+let krispProcessor = null;
 
 function readAudioPreferences() {
     const fallback = {
@@ -86,7 +89,8 @@ function readAudioPreferences() {
         outputVolume: 1,
         noiseSuppression: true,
         echoCancellation: true,
-        processingIntensity: "standard"
+        processingIntensity: "standard",
+        krispEnabled: false
     };
 
     try {
@@ -109,7 +113,8 @@ function readAudioPreferences() {
             echoCancellation: parsed.echoCancellation !== false,
             processingIntensity: ["soft", "standard", "aggressive"].includes(parsed.processingIntensity)
                 ? parsed.processingIntensity
-                : "standard"
+                : "standard",
+            krispEnabled: parsed.krispEnabled === true
         };
     } catch {
         return fallback;
@@ -125,7 +130,8 @@ function persistAudioPreferences() {
             outputVolume,
             noiseSuppression,
             echoCancellation,
-            processingIntensity
+            processingIntensity,
+            krispEnabled
         }));
     } catch {
         // Private mode may block persistence.
@@ -733,6 +739,62 @@ async function playAllRemoteAudio() {
 /* Microphone                                                         */
 /* ------------------------------------------------------------------ */
 
+const KRISP_MODULE_URL = new URL("./vendor/krisp-noise-filter.esm.mjs", import.meta.url).href;
+
+async function loadKrispModule() {
+    krispModulePromise ??= import(KRISP_MODULE_URL);
+    return krispModulePromise;
+}
+
+async function attachKrispToTrack(track) {
+    if (!krispEnabled || !track) {
+        return true;
+    }
+
+    try {
+        const { KrispNoiseFilter, isKrispNoiseFilterSupported } = await loadKrispModule();
+        if (!isKrispNoiseFilterSupported()) {
+            throw new Error("Krisp não é suportado neste navegador.");
+        }
+
+        const processor = KrispNoiseFilter({ quality: "medium" });
+        await track.setProcessor(processor);
+        krispProcessor = processor;
+        return true;
+    } catch (error) {
+        console.warn("Onda: Krisp noise filter could not be enabled", error);
+        krispEnabled = false;
+        krispProcessor = null;
+        persistAudioPreferences();
+        return false;
+    }
+}
+
+export async function setKrispEnabled(enabled) {
+    krispEnabled = Boolean(enabled);
+    persistAudioPreferences();
+
+    if (!initialized || !room) {
+        return true;
+    }
+
+    if (!krispEnabled) {
+        try {
+            await local.micTrack?.stopProcessor?.();
+        } catch (error) {
+            console.warn("Onda: could not stop Krisp processor", error);
+        }
+        krispProcessor = null;
+        return true;
+    }
+
+    if (!local.micTrack) {
+        return true;
+    }
+
+    return attachKrispToTrack(local.micTrack);
+}
+
 async function createMicrophoneTrackWithFallback() {
     const baseOptions = {
         echoCancellation,
@@ -796,6 +858,7 @@ async function acquireMicrophone(enable) {    if (!initialized || !room) {
                 dtx: true,
                 red: true
             });
+            await attachKrispToTrack(track);
 
             await setMicrophoneEnabled(enable !== false, false);
             notifyMediaState();
@@ -927,6 +990,7 @@ export async function switchAudioInput(deviceId, force = false) {
         local.micTrack = nextTrack;
         local.hasMic = true;
         applyInputVolumeToTrack(nextTrack);
+        await attachKrispToTrack(nextTrack);
         await setMicrophoneEnabled(wasOn, false);
 
         if (oldTrack) {
@@ -1063,6 +1127,7 @@ export async function getAudioSettings() {
         noiseSuppression,
         echoCancellation,
         processingIntensity,
+        krispEnabled,
         canSelectOutput: typeof HTMLMediaElement !== "undefined" &&
             typeof HTMLMediaElement.prototype.setSinkId === "function"
     };

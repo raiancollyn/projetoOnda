@@ -1,0 +1,6 @@
+﻿Krisp noise filter for LiveKit
+Package: @livekit/krisp-noise-filter 0.4.6
+Source: https://www.npmjs.com/package/@livekit/krisp-noise-filter
+License: see https://livekit.io/legal/terms-of-service (declared by the package)
+Bundled file: dist/index.js, copied unchanged as krisp-noise-filter.esm.mjs.
+Runtime model downloads: https://integrations.livekit.io/enc/v2
