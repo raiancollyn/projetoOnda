@@ -796,6 +796,9 @@ async function connectRnnoise(input) {
         maxChannels: 1,
         wasmBinary
     });
+    node.channelCount = 1;
+    node.channelCountMode = "explicit";
+    node.channelInterpretation = "speakers";
     try {
         input.gain.disconnect();
         input.gain.connect(node);
@@ -930,7 +933,13 @@ async function createGainProcessedMicrophoneTrack(rawTrack) {
         const source = context.createMediaStreamSource(new MediaStream([rawTrack.mediaStreamTrack]));
         const gain = context.createGain();
         gain.gain.value = inputVolume;
+        gain.channelCount = 1;
+        gain.channelCountMode = "explicit";
+        gain.channelInterpretation = "speakers";
         const destination = context.createMediaStreamDestination();
+        destination.channelCount = 1;
+        destination.channelCountMode = "explicit";
+        destination.channelInterpretation = "speakers";
         source.connect(gain);
         gain.connect(destination);
 
