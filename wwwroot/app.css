@@ -880,6 +880,25 @@ html.onda-pip .spotlight-feature {
     height: 100%;
 }
 
+html.onda-pip .spotlight-feature .media-tile-shell {
+    display: block !important;
+}
+
+html.onda-pip .focus-card-layout {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+}
+
+html.onda-pip .focus-avatar-card {
+    flex: 1;
+}
+
+html.onda-pip .focus-rail {
+    display: none !important;
+}
+
 html.onda-pip .spotlight-strip {
     display: none;
 }
