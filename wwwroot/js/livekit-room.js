@@ -78,7 +78,6 @@ let outputVolume = storedAudioPreferences.outputVolume;
 let noiseSuppression = storedAudioPreferences.noiseSuppression;
 let echoCancellation = storedAudioPreferences.echoCancellation;
 let processingIntensity = storedAudioPreferences.processingIntensity;
-let voiceIsolation = storedAudioPreferences.voiceIsolation;
 let rnnoiseEnabled = storedAudioPreferences.rnnoiseEnabled;
 let rnnoiseModulePromise = null;
 let rnnoiseWorkletReady = new WeakSet();
@@ -92,7 +91,6 @@ function readAudioPreferences() {
         noiseSuppression: true,
         echoCancellation: true,
         processingIntensity: "standard",
-        voiceIsolation: false,
         rnnoiseEnabled: false
     };
 
@@ -117,7 +115,6 @@ function readAudioPreferences() {
             processingIntensity: ["soft", "standard", "aggressive"].includes(parsed.processingIntensity)
                 ? parsed.processingIntensity
                 : "standard",
-            voiceIsolation: parsed.voiceIsolation === true,
             rnnoiseEnabled: parsed.rnnoiseEnabled === true
         };
     } catch {
@@ -135,7 +132,6 @@ function persistAudioPreferences() {
             noiseSuppression,
             echoCancellation,
             processingIntensity,
-            voiceIsolation,
             rnnoiseEnabled
         }));
     } catch {
@@ -862,20 +858,6 @@ export async function setRnnoiseEnabled(enabled) {
     }
 }
 
-export async function setVoiceIsolation(enabled) {
-    voiceIsolation = Boolean(enabled);
-    persistAudioPreferences();
-
-    if (initialized && room && local.micTrack) {
-        const deviceId = local.micDeviceId || inputDeviceId;
-        if (deviceId) {
-            await switchAudioInput(deviceId, true);
-        }
-    }
-
-    return true;
-}
-
 function disposeMicInput(input = local.micInput) {
     if (!input) {
         return;
@@ -984,8 +966,7 @@ async function createMicrophoneTrackWithFallback() {
     const baseOptions = {
         echoCancellation,
         noiseSuppression,
-        autoGainControl: processingIntensity !== "aggressive",
-        ...(voiceIsolation ? { voiceIsolation: true } : {})
+        autoGainControl: processingIntensity !== "aggressive"
     };
 
     try {
@@ -1167,7 +1148,6 @@ export async function switchAudioInput(deviceId, force = false) {
             echoCancellation,
             noiseSuppression,
             autoGainControl: processingIntensity !== "aggressive",
-            ...(voiceIsolation ? { voiceIsolation: true } : {}),
             deviceId: { exact: deviceId }
         });
         const nextTrack = await createGainProcessedMicrophoneTrack(rawTrack);
@@ -1338,7 +1318,6 @@ export async function getAudioSettings() {
         noiseSuppression,
         echoCancellation,
         processingIntensity,
-        voiceIsolation,
         rnnoiseEnabled,
         canSelectOutput: typeof HTMLMediaElement !== "undefined" &&
             typeof HTMLMediaElement.prototype.setSinkId === "function"

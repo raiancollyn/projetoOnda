@@ -1193,20 +1193,6 @@ else
             </label>
             <label class="camera-toggle-row">
                 <span>
-                    <Icon Name="users" Size="17" />
-                    <span>
-                        <strong>Isolamento de voz</strong>
-                        <small>Pede ao navegador para priorizar a voz e reduzir sons de fundo.</small>
-                    </span>
-                </span>
-                <input type="checkbox"
-                       checked="@_voiceIsolationEnabled"
-                       @onchange="ToggleVoiceIsolationAsync"
-                       disabled="@_audioProcessingBusy"
-                       aria-label="Ativar ou desativar isolamento de voz" />
-            </label>
-            <label class="camera-toggle-row">
-                <span>
                     <Icon Name="sparkles" Size="17" />
                     <span>
                         <strong>RNNoise (experimental)</strong>
@@ -1814,7 +1800,6 @@ else
     private bool _noiseSuppression = true;
     private bool _echoCancellation = true;
     private string _audioProcessingIntensity = "standard";
-    private bool _voiceIsolationEnabled;
     private bool _rnnoiseEnabled;
     private bool _audioProcessingBusy;
     private bool _audioCanSelectOutput;
@@ -4449,41 +4434,6 @@ else
         await ApplyAudioProcessingAsync();
     }
 
-    private async Task ToggleVoiceIsolationAsync(ChangeEventArgs args)
-    {
-        if (_nativeMedia || _jsModule is null || _audioProcessingBusy)
-        {
-            return;
-        }
-
-        var enabled = args.Value is true;
-        _voiceIsolationEnabled = enabled;
-        _audioProcessingBusy = true;
-        StateHasChanged();
-        try
-        {
-            var applied = await _jsModule.InvokeAsync<bool>("setVoiceIsolation", enabled);
-            if (!applied)
-            {
-                _voiceIsolationEnabled = false;
-                Toasts.Show(
-                    "Não foi possível alterar o isolamento de voz.",
-                    ToastKind.Info,
-                    6000);
-            }
-        }
-        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
-        {
-            _voiceIsolationEnabled = false;
-            Toasts.Show("Não foi possível ativar o isolamento de voz.", ToastKind.Error);
-        }
-        finally
-        {
-            _audioProcessingBusy = false;
-            StateHasChanged();
-        }
-    }
-
     private async Task ToggleRnnoiseAsync(ChangeEventArgs args)
     {
         if (_nativeMedia || _jsModule is null || _audioProcessingBusy)
@@ -4601,7 +4551,6 @@ else
             _audioProcessingIntensity = settings?.ProcessingIntensity is "soft" or "standard" or "aggressive"
                 ? settings.ProcessingIntensity
                 : "standard";
-            _voiceIsolationEnabled = settings?.VoiceIsolation ?? false;
             _rnnoiseEnabled = settings?.RnnoiseEnabled ?? false;
         }
         catch (Exception ex) when (ex is JSException or JSDisconnectedException)
@@ -5041,7 +4990,6 @@ else
         bool NoiseSuppression,
         bool EchoCancellation,
         string? ProcessingIntensity = null,
-        bool VoiceIsolation = false,
         bool RnnoiseEnabled = false);
 
     private sealed record CameraOptionsView(
