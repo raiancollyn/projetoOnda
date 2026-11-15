@@ -2250,7 +2250,10 @@
         let permission = "unsupported";
         const nativePlugin = nativeMediaPlugin();
         const nativeNotifications = Boolean(nativePlugin?.notifyChat);
-        if (nativeNotifications) {
+        const desktopNotifications = Boolean(window.ondaDesktop?.notifyChat);
+        if (desktopNotifications) {
+            permission = "granted";
+        } else if (nativeNotifications) {
             if (notificationSettings.chatNotifications) {
                 permission = "requested";
                 try {
@@ -2351,6 +2354,15 @@
 
         const message = String(text || "").trim();
         if (!message) {
+            return;
+        }
+
+        if (window.ondaDesktop?.notifyChat) {
+            void window.ondaDesktop.notifyChat({
+                sender: String(sender || "Alguém"),
+                text: message,
+                roomId: String(roomCode || "")
+            }).catch(() => {});
             return;
         }
 
