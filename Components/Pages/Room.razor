@@ -610,7 +610,7 @@ else
                                 }
                                 else
                                 {
-                                    <Icon Name="@(_localMicOn ? "mic" : "mic-off")" Size="19" />
+                                    <Icon Name="@(_localMicOn ? "mic-off" : "mic")" Size="19" />
                                 }
                             </span>
                             <span class="dock-control-label">@(_localMicOn ? "Mic" : "Mudo")</span>
@@ -630,7 +630,7 @@ else
                                 }
                                 else
                                 {
-                                    <Icon Name="@(_localCameraOn ? "camera" : "camera-off")" Size="19" />
+                                    <Icon Name="@(_localCameraOn ? "camera-off" : "camera")" Size="19" />
                                 }
                             </span>
                             <span class="dock-control-label">Câmera</span>
@@ -646,6 +646,7 @@ else
                                 <span class="dock-control-icon"><Icon Name="sliders" Size="18" /></span>
                                 <span class="dock-control-label">Ajustes</span>
                             </button>
+                            <span class="dock-divider dock-camera-divider" aria-hidden="true"></span>
                         }
 
                         <button type="button"

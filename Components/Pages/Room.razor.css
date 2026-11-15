@@ -1669,6 +1669,10 @@ html[data-theme="light"] .room-menu-item-copy small {
     animation: dock-signal 1.4s ease-in-out infinite;
 }
 
+html[data-theme="light"] .dock-signal i {
+    background: #5f7d2a;
+}
+
 .dock-signal i:nth-child(1) {
     height: 35%;
     animation-delay: -0.2s;
