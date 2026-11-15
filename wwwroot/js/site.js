@@ -1629,53 +1629,25 @@
         return Boolean(result?.applied);
     }
 
-    async function getNativeNoiseSuppression() {
+    async function getNativeRnnoise() {
         const plugin = nativeMediaPlugin();
         if (!plugin) {
             return true;
         }
 
         const result = await plugin.getAudioProcessing();
-        return result?.noiseSuppression !== false;
+        return result?.rnnoise !== false;
     }
 
-    async function getNativeEchoCancellation() {
-        const plugin = nativeMediaPlugin();
-        if (!plugin) {
-            return true;
-        }
-
-        const result = await plugin.getAudioProcessing();
-        return result?.echoCancellation !== false;
-    }
-
-    async function getNativeAudioProcessingIntensity() {
-        const plugin = nativeMediaPlugin();
-        if (!plugin) {
-            return "standard";
-        }
-
-        const result = await plugin.getAudioProcessing();
-        return ["soft", "standard", "aggressive"].includes(result?.intensity)
-            ? result.intensity
-            : "standard";
-    }
-
-    async function setNativeAudioProcessing(noiseSuppression, echoCancellation, intensity) {
+    async function setNativeRnnoise(enabled) {
         const plugin = nativeMediaPlugin();
         if (!plugin) {
             return false;
         }
 
-        const result = await plugin.setAudioProcessing({
-            noiseSuppression: Boolean(noiseSuppression),
-            echoCancellation: Boolean(echoCancellation),
-            intensity: ["soft", "standard", "aggressive"].includes(intensity)
-                ? intensity
-                : "standard"
-        });
-        return result?.noiseSuppression === Boolean(noiseSuppression) &&
-            result?.echoCancellation === Boolean(echoCancellation);
+        const value = Boolean(enabled);
+        const result = await plugin.setAudioProcessing({ rnnoise: value });
+        return result?.rnnoise === value;
     }
 
     async function getNativeCameraOptions() {
@@ -2550,10 +2522,8 @@
         stopNativeScreenShare,
         getNativeScreenShare,
         setNativeScreenQuality,
-        getNativeNoiseSuppression,
-        getNativeEchoCancellation,
-        getNativeAudioProcessingIntensity,
-        setNativeAudioProcessing,
+        getNativeRnnoise,
+        setNativeRnnoise,
         registerNativeMicListener,
         getNativeMic,
         registerExitGuard,

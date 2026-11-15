@@ -1065,46 +1065,22 @@ else
             </div>
             <label class="camera-toggle-row">
                 <span>
-                    <Icon Name="wave" Size="17" />
+                    <Icon Name="sparkles" Size="17" />
                     <span>
-                        <strong>Supressão de ruído</strong>
-                        <small>Reduz ruídos constantes como ventilador e trânsito.</small>
+                        <strong>RNNoise</strong>
+                        <small>Cancelamento neural no microfone do celular.</small>
                     </span>
                 </span>
                 <input type="checkbox"
-                       checked="@_noiseSuppression"
-                       @onchange="ToggleNoiseSuppressionAsync"
+                       checked="@_nativeRnnoiseEnabled"
+                       @onchange="ToggleNativeRnnoiseAsync"
                        disabled="@_audioProcessingBusy"
-                       aria-label="Ativar ou desativar supressão de ruído" />
+                       aria-label="Ativar ou desativar RNNoise" />
             </label>
-            <label class="camera-toggle-row">
-                <span>
-                    <Icon Name="volume-off" Size="17" />
-                    <span>
-                        <strong>Cancelamento de eco</strong>
-                        <small>Evita que o som da sala volte pelo seu microfone.</small>
-                    </span>
-                </span>
-                <input type="checkbox"
-                       checked="@_echoCancellation"
-                       @onchange="ToggleEchoCancellationAsync"
-                       disabled="@_audioProcessingBusy"
-                       aria-label="Ativar ou desativar cancelamento de eco" />
-            </label>
-            <label class="field">
-                <span class="field-label">Intensidade do processamento</span>
-                <select class="text-input"
-                        @bind="_audioProcessingIntensity"
-                        @bind:after="ApplyAudioProcessingAsync"
-                        disabled="@_audioProcessingBusy">
-                    <option value="soft">Suave</option>
-                    <option value="standard">Padrão</option>
-                    <option value="aggressive">Agressivo</option>
-                </select>
-                <span class="field-hint">
-                    O WebRTC não expõe um nível contínuo; o perfil ajusta ganho automático e filtros.
-                </span>
-            </label>
+            <p class="field-hint">
+                O cancelamento de eco continua ativo internamente. O RNNoise substitui a
+                supressão de ruído do WebRTC.
+            </p>
         </div>
         <p class="quality-note">
             Conecte o Bluetooth ou o fone com fio antes de abrir esta lista. O volume usa a saída de mídia do Android.
@@ -1849,9 +1825,7 @@ else
     private bool _exitGuardStarted;
     private bool _audioRouteBusy;
     private bool _audioNativeMode;
-    private bool _noiseSuppression = true;
-    private bool _echoCancellation = true;
-    private string _audioProcessingIntensity = "standard";
+    private bool _nativeRnnoiseEnabled = true;
     private bool _rnnoiseEnabled;
     private bool _audioProcessingBusy;
     private bool _audioCanSelectOutput;
@@ -2409,9 +2383,7 @@ else
                         nativeMicOn = await JS.InvokeAsync<bool>("onda.getNativeMic");
                         nativeCameraOn = await JS.InvokeAsync<bool>("onda.getNativeCamera");
                         nativeScreenOn = await JS.InvokeAsync<bool>("onda.getNativeScreenShare");
-                        _noiseSuppression = await JS.InvokeAsync<bool>("onda.getNativeNoiseSuppression");
-                        _echoCancellation = await JS.InvokeAsync<bool>("onda.getNativeEchoCancellation");
-                        _audioProcessingIntensity = await JS.InvokeAsync<string>("onda.getNativeAudioProcessingIntensity");
+                        _nativeRnnoiseEnabled = await JS.InvokeAsync<bool>("onda.getNativeRnnoise");
                     }
                     catch (Exception ex) when (ex is JSException or JSDisconnectedException)
                     {
@@ -4532,16 +4504,38 @@ else
         }
     }
 
-    private async Task ToggleNoiseSuppressionAsync(ChangeEventArgs args)
+    private async Task ToggleNativeRnnoiseAsync(ChangeEventArgs args)
     {
-        _noiseSuppression = args.Value is true;
-        await ApplyAudioProcessingAsync();
-    }
+        if (!_nativeMedia || _audioProcessingBusy)
+        {
+            return;
+        }
 
-    private async Task ToggleEchoCancellationAsync(ChangeEventArgs args)
-    {
-        _echoCancellation = args.Value is true;
-        await ApplyAudioProcessingAsync();
+        var enabled = args.Value is true;
+        _nativeRnnoiseEnabled = enabled;
+        _audioProcessingBusy = true;
+        StateHasChanged();
+        try
+        {
+            var applied = await JS.InvokeAsync<bool>("onda.setNativeRnnoise", enabled);
+            if (!applied)
+            {
+                _nativeRnnoiseEnabled = !enabled;
+                Toasts.Show(
+                    "Não foi possível alterar o RNNoise no aplicativo.",
+                    ToastKind.Error);
+            }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            _nativeRnnoiseEnabled = !enabled;
+            Toasts.Show("Não foi possível alterar o RNNoise no aplicativo.", ToastKind.Error);
+        }
+        finally
+        {
+            _audioProcessingBusy = false;
+            StateHasChanged();
+        }
     }
 
     private async Task ToggleRnnoiseAsync(ChangeEventArgs args)
@@ -4571,48 +4565,6 @@ else
         {
             _rnnoiseEnabled = false;
             Toasts.Show("Não foi possível ativar o RNNoise.", ToastKind.Error);
-        }
-        finally
-        {
-            _audioProcessingBusy = false;
-            StateHasChanged();
-        }
-    }
-
-    private async Task ApplyAudioProcessingAsync()
-    {
-        if (_audioProcessingBusy || (!_nativeMedia && _jsModule is null))
-        {
-            return;
-        }
-
-        _audioProcessingBusy = true;
-        StateHasChanged();
-        try
-        {
-            var applied = _nativeMedia
-                ? await JS.InvokeAsync<bool>(
-                    "onda.setNativeAudioProcessing",
-                    _noiseSuppression,
-                    _echoCancellation,
-                    _audioProcessingIntensity)
-                : await _jsModule!.InvokeAsync<bool>(
-                    "setAudioProcessing",
-                    _noiseSuppression,
-                    _echoCancellation,
-                    _audioProcessingIntensity);
-            if (!applied)
-            {
-                Toasts.Show(
-                    "Não foi possível aplicar o processamento de áudio.",
-                    ToastKind.Error);
-            }
-        }
-        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
-        {
-            Toasts.Show(
-                "Não foi possível aplicar o processamento de áudio.",
-                ToastKind.Error);
         }
         finally
         {
@@ -4656,11 +4608,6 @@ else
             _audioInputVolume = (int)Math.Round(Math.Clamp(settings?.InputVolume ?? 1, 0, 1) * 100);
             _audioOutputVolume = (int)Math.Round(Math.Clamp(settings?.OutputVolume ?? 1, 0, 1) * 100);
             _audioCanSelectOutput = settings?.CanSelectOutput ?? false;
-            _noiseSuppression = settings?.NoiseSuppression ?? true;
-            _echoCancellation = settings?.EchoCancellation ?? true;
-            _audioProcessingIntensity = settings?.ProcessingIntensity is "soft" or "standard" or "aggressive"
-                ? settings.ProcessingIntensity
-                : "standard";
             _rnnoiseEnabled = settings?.RnnoiseEnabled ?? false;
         }
         catch (Exception ex) when (ex is JSException or JSDisconnectedException)
@@ -5097,9 +5044,6 @@ else
         double InputVolume,
         double OutputVolume,
         bool CanSelectOutput,
-        bool NoiseSuppression,
-        bool EchoCancellation,
-        string? ProcessingIntensity = null,
         bool RnnoiseEnabled = false);
 
     private sealed record CameraOptionsView(
