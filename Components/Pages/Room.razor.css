@@ -902,6 +902,22 @@ html[data-theme="light"] .room-theme-choice[aria-checked="true"] .onda-icon {
     color: #3d5412;
 }
 
+html[data-theme="light"] .room-theme-options .room-theme-choice[aria-checked="true"] {
+    border-color: #718f2c;
+    background: #dcefab;
+    color: #26350e;
+    box-shadow: inset 0 0 0 1px rgba(75, 101, 22, 0.12);
+}
+
+html[data-theme="light"] .room-theme-options .room-theme-choice[aria-checked="true"] .onda-icon {
+    color: #26350e;
+}
+
+html[data-theme="light"] .room-theme-options .room-theme-choice[aria-checked="true"] span {
+    color: #26350e;
+    font-weight: 700;
+}
+
 html[data-theme="light"] .room-menu-item:hover,
 html[data-theme="light"] .room-menu-item:focus-visible {
     background: rgba(21, 35, 31, 0.06);
