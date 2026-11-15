@@ -2146,11 +2146,25 @@ else
     <div class="admin-inline-form admin-settings-form">
         <label>
             <span>Nome da sala</span>
-            <input type="text" maxlength="48" @bind="_adminRoomName" />
+            <input type="text"
+                   maxlength="48"
+                   autocomplete="off"
+                   autocorrect="off"
+                   autocapitalize="off"
+                   spellcheck="false"
+                   data-gramm="false"
+                   data-gramm_editor="false"
+                   data-enable-grammarly="false"
+                   data-lpignore="true"
+                   @bind="_adminRoomName" />
         </label>
         <label>
             <span>Limite de participantes</span>
-            <input type="number" min="2" max="@Rooms.MaxParticipantsPerRoom" @bind="_adminRoomMax" />
+            <input type="number"
+                   min="2"
+                   max="@Rooms.MaxParticipantsPerRoom"
+                   inputmode="numeric"
+                   @bind="_adminRoomMax" />
         </label>
         <small>Máximo suportado pelo LiveKit: @Rooms.MaxParticipantsPerRoom pessoas.</small>
         @if (!string.IsNullOrWhiteSpace(_adminError))

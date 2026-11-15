@@ -1,10 +1,16 @@
 @if (IsOpen)
 {
-    <div class="modal-backdrop" tabindex="-1" @onclick="HandleBackdropClick" @onkeydown="HandleKeyDown">
+    <div class="modal-backdrop" tabindex="-1"
+         @onpointerdown="HandleBackdropPointerDown"
+         @onpointercancel="ResetBackdropPointer"
+         @onclick="HandleBackdropClick"
+         @onkeydown="HandleKeyDown">
         <div class="modal-card @(Wide ? "modal-wide" : null)"
              role="dialog"
              aria-modal="true"
              aria-labelledby="@_titleId"
+             @onpointerdown="HandleCardPointerDown"
+             @onpointerdown:stopPropagation="true"
              @onclick:stopPropagation="true">
             <div class="modal-heading">
                 <div class="modal-heading-copy">
@@ -25,6 +31,7 @@
 
 @code {
     private readonly string _titleId = $"modal-title-{Guid.NewGuid():N}";
+    private bool _pointerDownOnBackdrop;
 
     [Parameter]
     public bool IsOpen { get; set; }
@@ -46,7 +53,24 @@
 
     private Task CloseAsync() => OnClose.InvokeAsync();
 
-    private Task HandleBackdropClick() => CloseAsync();
+    private void HandleBackdropPointerDown() => _pointerDownOnBackdrop = true;
+
+    private void HandleCardPointerDown() => _pointerDownOnBackdrop = false;
+
+    private void ResetBackdropPointer() => _pointerDownOnBackdrop = false;
+
+    private Task HandleBackdropClick()
+    {
+        // Se o ponteiro começou dentro do modal e o usuário arrastou até
+        // soltar fora, o navegador dispara o clique no backdrop. Não fecha.
+        if (!_pointerDownOnBackdrop)
+        {
+            return Task.CompletedTask;
+        }
+
+        _pointerDownOnBackdrop = false;
+        return CloseAsync();
+    }
 
     private async Task HandleKeyDown(KeyboardEventArgs args)
     {
