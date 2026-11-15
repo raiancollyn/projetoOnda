@@ -10,7 +10,13 @@ public sealed record ParticipantView(
     bool ScreenOn,
     bool ScreenWithAudio,
     bool Speaking,
-    DateTimeOffset JoinedAt);
+    DateTimeOffset JoinedAt,
+    bool IsPunished = false,
+    DateTimeOffset? PunishedUntil = null,
+    bool MicBlocked = false,
+    bool CameraBlocked = false,
+    bool ScreenBlocked = false,
+    bool ChatBlocked = false);
 
 public sealed record ChatMessageView(
     string Id,
@@ -55,16 +61,37 @@ public sealed record RoomInfoView(
 
 public sealed record RelaySignal(string RoomId, string FromId, string ToId, string Payload);
 
+public sealed record RoomBanView(
+    string Id,
+    string GuestName,
+    string Reason,
+    DateTimeOffset BannedAt,
+    DateTimeOffset? ExpiresAt,
+    string BannedByName,
+    string DeviceId,
+    bool Permanent);
+
+public sealed record ModerationNoticeView(
+    string Kind,
+    string? Reason,
+    DateTimeOffset? Until,
+    bool Permanent);
+
 public enum JoinRoomStatus
 {
     Success,
     NotFound,
     WrongPassword,
     Full,
-    InvalidInput
+    InvalidInput,
+    Banned
 }
 
-public sealed record JoinRoomResult(JoinRoomStatus Status, string? Error, RoomView? Room);
+public sealed record JoinRoomResult(
+    JoinRoomStatus Status,
+    string? Error,
+    RoomView? Room,
+    RoomBanView? Ban = null);
 
 public sealed record CreateRoomResult(bool Success, string? RoomCode, string? Error);
 

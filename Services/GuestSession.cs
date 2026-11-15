@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Onda.Models;
 
 namespace Onda.Services;
@@ -27,11 +29,37 @@ public sealed class GuestSession
         Id = identity.Id;
         Name = identity.Name;
         AvatarTone = identity.AvatarTone;
+        DeviceId = BuildDeviceId(context);
     }
 
     public string Id { get; }
     public string Name { get; private set; }
     public int AvatarTone { get; private set; }
+
+    /// <summary>
+    /// Stable hardware/browser signal used to keep room bans effective after
+    /// cookies or local storage are cleared. It does not include the network.
+    /// </summary>
+    public string DeviceId { get; }
+
+    private static string BuildDeviceId(HttpContext? context)
+    {
+        if (context is null)
+        {
+            return "web-unknown";
+        }
+
+        var request = context.Request;
+        var signal = string.Join('|',
+            request.Headers.UserAgent.ToString(),
+            request.Headers["Sec-CH-UA-Platform"].ToString(),
+            request.Headers["Sec-CH-UA-Arch"].ToString(),
+            request.Headers["Sec-CH-UA-Bitness"].ToString(),
+            request.Headers["Sec-CH-UA-Model"].ToString(),
+            request.Headers.AcceptLanguage.ToString());
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(signal));
+        return $"web-{Convert.ToHexString(hash.AsSpan(0, 12)).ToLowerInvariant()}";
+    }
 
     public void RestoreHandoffIdentity(string name, int avatarTone)
     {

@@ -95,7 +95,7 @@ else if (!_joined)
                 {
                     <span class="gate-card-icon gate-card-icon-warn"><Icon Name="users" Size="25" /></span>
                     <p class="eyebrow">SALA COMPLETA</p>
-                    <h2>Oito vozes já estão aqui.</h2>
+                    <h2>@_roomInfo.MaxParticipants vozes já estão aqui.</h2>
                     <p class="gate-card-copy">Esta sala está no limite de pessoas. Assim que alguém sair, um lugar abre — tente atualizar em instantes.</p>
                     <button type="button" class="button button-accent gate-submit" @onclick="RefreshGateAsync">
                         <Icon Name="wave" Size="17" /> Atualizar sala
@@ -314,6 +314,25 @@ else
                                     <small>Sons e mensagens fora de foco</small>
                                 </span>
                             </button>
+
+                            @if (_self?.IsOwner == true)
+                            {
+                                <div class="room-menu-divider"></div>
+                                <button type="button" class="room-menu-item" role="menuitem" @onclick="OpenRoomSettingsFromMenu">
+                                    <span class="room-menu-item-icon"><Icon Name="settings" Size="17" /></span>
+                                    <span class="room-menu-item-copy">
+                                        <strong>Configurações da sala</strong>
+                                        <small>Nome e limite de participantes</small>
+                                    </span>
+                                </button>
+                                <button type="button" class="room-menu-item" role="menuitem" @onclick="OpenBansFromMenu">
+                                    <span class="room-menu-item-icon"><Icon Name="shield" Size="17" /></span>
+                                    <span class="room-menu-item-copy">
+                                        <strong>Banimentos</strong>
+                                        <small>Gerenciar pessoas banidas</small>
+                                    </span>
+                                </button>
+                            }
                         </div>
                     }
                 </div>
@@ -652,9 +671,9 @@ else
                                                     <span class="person-host" title="Criou esta sala"><Icon Name="crown" Size="12" /></span>
                                                 }
                                             </h2>
-                                            <p class="person-status @(person.Speaking ? "is-talking" : null)">
-                                                <Icon Name="@(person.MicOn ? "mic" : "mic-off")" Size="13" />
-                                                @(person.Speaking ? "Falando agora" : person.MicOn ? "Microfone ligado" : "Silenciado")
+                                            <p class="person-status @(person.Speaking ? "is-talking" : null) @(IsPunishedNow(person) || person.MicBlocked || person.ChatBlocked ? "is-moderated" : null)">
+                                                <Icon Name="@ParticipantStatusIcon(person)" Size="13" />
+                                                @ParticipantStatusText(person)
                                             </p>
                                         </div>
                                         @if (person.Speaking)
@@ -730,10 +749,10 @@ else
                         <button type="button"
                                 class="dock-control @(_localMicOn ? "is-stop" : null)"
                                 @onclick="ToggleMicrophoneAsync"
-                                disabled="@(!_jsReady || _actionPending is not null)"
+                                disabled="@(!_jsReady || _actionPending is not null || !CanUseMic)"
                                 aria-pressed="@(_localMicOn ? "true" : "false")"
                                 aria-label="@(_localMicOn ? "Silenciar microfone" : _hasMic ? "Ativar microfone" : "Permitir microfone")"
-                                title="@(_localMicOn ? "Silenciar microfone" : _hasMic ? "Ativar microfone" : "Permitir microfone")">
+                                title="@(!CanUseMic ? "O administrador bloqueou o microfone." : _localMicOn ? "Silenciar microfone" : _hasMic ? "Ativar microfone" : "Permitir microfone")">
                             <span class="dock-control-icon">
                                 @if (_actionPending == "mic")
                                 {
@@ -755,10 +774,10 @@ else
                         <button type="button"
                                 class="dock-control @(_localCameraOn ? "is-stop" : null)"
                                 @onclick="ToggleCameraAsync"
-                                disabled="@(!_jsReady || _actionPending is not null)"
+                                disabled="@(!_jsReady || _actionPending is not null || !CanUseCamera)"
                                 aria-pressed="@(_localCameraOn ? "true" : "false")"
                                 aria-label="@(_localCameraOn ? "Desligar câmera" : "Ligar câmera")"
-                                title="@(_localCameraOn ? "Desligar câmera" : "Ligar câmera")">
+                                title="@(!CanUseCamera ? "O administrador bloqueou a câmera." : _localCameraOn ? "Desligar câmera" : "Ligar câmera")">
                             <span class="dock-control-icon">
                                 @if (_actionPending == "camera")
                                 {
@@ -788,10 +807,10 @@ else
                         <button type="button"
                                 class="dock-control dock-screen-control @(_localScreenOn ? "is-stop" : null)"
                                 @onclick="ToggleScreenAsync"
-                                disabled="@(!_jsReady || _actionPending is not null)"
+                                disabled="@(!_jsReady || _actionPending is not null || !CanUseScreen)"
                                 aria-pressed="@(_localScreenOn ? "true" : "false")"
                                 aria-label="@(_localScreenOn ? "Parar compartilhamento de tela" : "Compartilhar tela")"
-                                title="@(_localScreenOn ? "Parar compartilhamento de tela" : "Compartilhar tela")">
+                                title="@(!CanUseScreen ? "O administrador bloqueou a tela." : _localScreenOn ? "Parar compartilhamento de tela" : "Compartilhar tela")">
                             <span class="dock-control-icon">
                                 @if (_actionPending == "screen")
                                 {
@@ -941,7 +960,8 @@ else
                                       data-chat-input="true"
                                       rows="1"
                                       maxlength="1000"
-                                      placeholder="Escreva uma mensagem..."
+                                      placeholder="@(CanUseChat ? "Escreva uma mensagem..." : "O administrador bloqueou seu chat.")"
+                                      disabled="@(!CanUseChat || _chatSending)"
                                       @bind="_chatDraft"
                                       @bind:event="oninput"></textarea>
                             <button type="submit"
@@ -1001,8 +1021,8 @@ else
                                                     <span class="people-host" title="Criou esta sala"><Icon Name="crown" Size="11" /></span>
                                                 }
                                             </span>
-                                            <span class="people-status @(person.Speaking ? "is-talking" : null)">
-                                                @StatusLabel(person)
+                                            <span class="people-status @(person.Speaking ? "is-talking" : null) @(IsPunishedNow(person) || person.MicBlocked || person.ChatBlocked ? "is-moderated" : null)">
+                                                @ParticipantStatusText(person)
                                             </span>
                                         </div>
 
@@ -1023,6 +1043,17 @@ else
                                                     aria-expanded="@(_volumePeerId == person.Id ? "true" : "false")">
                                                 <Icon Name="@(VolumeIconFor(person.Id))" Size="16" />
                                             </button>
+                                            @if (_self?.IsOwner == true)
+                                            {
+                                                <button type="button"
+                                                        class="people-action people-admin-action"
+                                                        @onclick="() => OpenAdminDialog(person)"
+                                                        @onclick:stopPropagation="true"
+                                                        title="Moderar participante"
+                                                        aria-label="@($"Moderar {person.Name}")">
+                                                    <Icon Name="shield" Size="16" />
+                                                </button>
+                                            }
                                         }
                                     </div>
 
@@ -1881,6 +1912,259 @@ else
     </div>
 </Modal>
 
+<Modal IsOpen="_showModerationDialog"
+       Title="@(_moderationNotice?.Kind == "ban" ? "Você foi banido" : "Você foi expulso")"
+       Eyebrow="AVISO DA SALA"
+       OnClose="FinishModerationExitAsync">
+    <div class="moderation-notice">
+        <span class="moderation-notice-icon">
+            <Icon Name="@(_moderationNotice?.Kind == "ban" ? "shield" : "phone-off")" Size="26" />
+        </span>
+        <p>
+            @if (_moderationNotice?.Kind == "ban")
+            {
+                <text>O administrador removeu seu acesso a esta sala.</text>
+            }
+            else
+            {
+                <text>O administrador encerrou sua participação nesta sala.</text>
+            }
+        </p>
+        @if (!string.IsNullOrWhiteSpace(_moderationNotice?.Reason))
+        {
+            <div class="moderation-notice-detail">
+                <span>Motivo</span>
+                <strong>@_moderationNotice!.Reason</strong>
+            </div>
+        }
+        @if (_moderationNotice is { Kind: "ban" })
+        {
+            <div class="moderation-notice-detail">
+                <span>Duração</span>
+                <strong>@BanDurationLabel(_moderationNotice.Until, _moderationNotice.Permanent)</strong>
+            </div>
+        }
+    </div>
+    <div class="modal-actions modal-actions-end">
+        <button type="button" class="button button-primary" @onclick="FinishModerationExitAsync">
+            Voltar ao início
+        </button>
+    </div>
+</Modal>
+
+<Modal IsOpen="_showAdminDialog"
+       Title="@(AdminTarget?.Name ?? "Moderar participante")"
+       Eyebrow="ADMINISTRAÇÃO"
+       Wide
+       OnClose="CloseAdminDialog">
+    @if (AdminTarget is { } target)
+    {
+        <div class="admin-panel">
+            <section class="admin-section">
+                <div class="admin-section-heading">
+                    <div>
+                        <h3>Permissões</h3>
+                        <p>O bloqueio é aplicado imediatamente na sala.</p>
+                    </div>
+                </div>
+                <div class="admin-block-grid">
+                    <button type="button"
+                            class="admin-block-option @(target.MicBlocked && target.CameraBlocked && target.ScreenBlocked && target.ChatBlocked ? "is-on" : null)"
+                            disabled="@_adminBusy"
+                            @onclick="() => ToggleAllBlocksAsync(target)">
+                        <Icon Name="lock" Size="16" />
+                        <span>Bloqueio geral</span>
+                    </button>
+                    <button type="button"
+                            class="admin-block-option @(target.MicBlocked ? "is-on" : null)"
+                            disabled="@_adminBusy"
+                            @onclick="() => SetMicBlockAsync(target)">
+                        <Icon Name="mic-off" Size="16" />
+                        <span>Microfone</span>
+                    </button>
+                    <button type="button"
+                            class="admin-block-option @(target.CameraBlocked ? "is-on" : null)"
+                            disabled="@_adminBusy"
+                            @onclick="() => SetCameraBlockAsync(target)">
+                        <Icon Name="camera-off" Size="16" />
+                        <span>Câmera</span>
+                    </button>
+                    <button type="button"
+                            class="admin-block-option @(target.ScreenBlocked ? "is-on" : null)"
+                            disabled="@_adminBusy"
+                            @onclick="() => SetScreenBlockAsync(target)">
+                        <Icon Name="screen-off" Size="16" />
+                        <span>Tela</span>
+                    </button>
+                    <button type="button"
+                            class="admin-block-option @(target.ChatBlocked ? "is-on" : null)"
+                            disabled="@_adminBusy"
+                            @onclick="() => SetChatBlockAsync(target)">
+                        <Icon Name="chat" Size="16" />
+                        <span>Chat</span>
+                    </button>
+                </div>
+            </section>
+
+            <section class="admin-section">
+                <div class="admin-section-heading">
+                    <div>
+                        <h3>Castigo</h3>
+                        <p>Bloqueia microfone, câmera e tela. O chat continua liberado.</p>
+                    </div>
+                </div>
+                @if (IsPunishedNow(target))
+                {
+                    <div class="admin-active-punishment">
+                        <span><Icon Name="clock" Size="15" /> Restam @PunishmentRemaining(target.PunishedUntil)</span>
+                        <button type="button" class="button button-ghost button-small" disabled="@_adminBusy" @onclick="RemovePunishmentAsync">
+                            Remover castigo
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    <div class="admin-inline-form">
+                        <select @bind="_adminPunishmentPreset" aria-label="Duração do castigo">
+                            <option value="5">5 minutos</option>
+                            <option value="15">15 minutos</option>
+                            <option value="30">30 minutos</option>
+                            <option value="60">1 hora</option>
+                            <option value="1440">1 dia</option>
+                            <option value="custom">Personalizado</option>
+                        </select>
+                        @if (_adminPunishmentPreset == "custom")
+                        {
+                            <input type="number" min="1" max="10080" @bind="_adminPunishmentCustom" aria-label="Minutos de castigo" />
+                        }
+                        <button type="button" class="button button-primary button-small" disabled="@_adminBusy" @onclick="ApplyPunishmentAsync">
+                            Aplicar castigo
+                        </button>
+                    </div>
+                }
+            </section>
+
+            <section class="admin-section">
+                <div class="admin-section-heading">
+                    <div>
+                        <h3>Expulsar</h3>
+                        <p>A pessoa volta ao início e ainda pode entrar novamente.</p>
+                    </div>
+                </div>
+                <div class="admin-inline-form">
+                    <input type="text" maxlength="300" placeholder="Motivo (opcional)" @bind="_adminKickReason" />
+                    <button type="button" class="button button-ghost button-small" disabled="@_adminBusy" @onclick="KickParticipantAsync">
+                        Expulsar
+                    </button>
+                </div>
+            </section>
+
+            <section class="admin-section">
+                <div class="admin-section-heading">
+                    <div>
+                        <h3>Banir</h3>
+                        <p>O motivo é obrigatório. O dispositivo fica registrado enquanto a sala existir.</p>
+                    </div>
+                </div>
+                <div class="admin-inline-form">
+                    <input type="text" maxlength="300" placeholder="Motivo do banimento" @bind="_adminBanReason" />
+                    <select @bind="_adminBanPreset" aria-label="Duração do banimento">
+                        <option value="60">1 hora</option>
+                        <option value="1440">1 dia</option>
+                        <option value="10080">7 dias</option>
+                        <option value="43200">30 dias</option>
+                        <option value="permanent">Permanente</option>
+                        <option value="custom">Personalizado</option>
+                    </select>
+                    @if (_adminBanPreset == "custom")
+                    {
+                        <input type="number" min="1" max="525600" @bind="_adminBanCustom" aria-label="Minutos de banimento" />
+                    }
+                    <button type="button" class="button button-danger button-small" disabled="@_adminBusy" @onclick="BanParticipantAsync">
+                        Banir
+                    </button>
+                </div>
+            </section>
+
+            <section class="admin-section">
+                <div class="admin-section-heading">
+                    <div>
+                        <h3>Administração</h3>
+                        <p>Passe o cargo para outra pessoa da sala.</p>
+                    </div>
+                </div>
+                <button type="button" class="button button-ghost button-small" disabled="@_adminBusy" @onclick="TransferOwnershipAsync">
+                    <Icon Name="crown" Size="15" /> Passar administração
+                </button>
+            </section>
+
+            @if (!string.IsNullOrWhiteSpace(_adminError))
+            {
+                <p class="admin-error" role="alert">@_adminError</p>
+            }
+        </div>
+    }
+</Modal>
+
+<Modal IsOpen="_showBansDialog"
+       Title="Banimentos"
+       Eyebrow="ADMINISTRAÇÃO"
+       Wide
+       OnClose="CloseBansDialogAsync">
+    @if (_roomBans.Count == 0)
+    {
+        <p class="admin-empty">Ninguém está banido desta sala.</p>
+    }
+    else
+    {
+        <div class="admin-ban-list">
+            @foreach (var ban in _roomBans)
+            {
+                <article class="admin-ban-item" @key="ban.Id">
+                    <div class="admin-ban-copy">
+                        <strong>@ban.GuestName</strong>
+                        <p>@ban.Reason</p>
+                        <small>@BanDurationLabel(ban.ExpiresAt, ban.Permanent) · banido por @ban.BannedByName</small>
+                    </div>
+                    <button type="button" class="button button-ghost button-small" disabled="@_adminBusy" @onclick="() => RemoveBanAsync(ban.Id)">
+                        Remover
+                    </button>
+                </article>
+            }
+        </div>
+    }
+    @if (!string.IsNullOrWhiteSpace(_adminError))
+    {
+        <p class="admin-error" role="alert">@_adminError</p>
+    }
+</Modal>
+
+<Modal IsOpen="_showRoomSettingsDialog"
+       Title="Configurações da sala"
+       Eyebrow="ADMINISTRAÇÃO"
+       OnClose="CloseRoomSettingsDialog">
+    <div class="admin-inline-form admin-settings-form">
+        <label>
+            <span>Nome da sala</span>
+            <input type="text" maxlength="48" @bind="_adminRoomName" />
+        </label>
+        <label>
+            <span>Limite de participantes</span>
+            <input type="number" min="2" max="@Rooms.MaxParticipantsPerRoom" @bind="_adminRoomMax" />
+        </label>
+        <small>Máximo suportado pelo LiveKit: @Rooms.MaxParticipantsPerRoom pessoas.</small>
+        @if (!string.IsNullOrWhiteSpace(_adminError))
+        {
+            <p class="admin-error" role="alert">@_adminError</p>
+        }
+        <div class="modal-actions modal-actions-end">
+            <button type="button" class="button button-primary" disabled="@_adminBusy" @onclick="SaveRoomSettingsAsync">
+                Salvar alterações
+            </button>
+        </div>
+    </div>
+</Modal>
+
 @code {
     private const string VoiceChannel = "voice";
     private const string ScreenChannel = "screen";
@@ -1915,6 +2199,27 @@ else
     private string _gatePassword = string.Empty;
     private string? _gateError;
     private bool _showGatePassword;
+    private string _deviceFingerprint = string.Empty;
+    private ModerationNoticeView? _moderationNotice;
+    private bool _showModerationDialog;
+    private bool _moderationExitStarted;
+    private ParticipantView? _moderationTarget;
+    private bool _showAdminDialog;
+    private bool _showBansDialog;
+    private bool _showRoomSettingsDialog;
+    private bool _adminBusy;
+    private string? _adminError;
+    private string _adminKickReason = string.Empty;
+    private string _adminBanReason = string.Empty;
+    private string _adminPunishmentPreset = "15";
+    private string _adminPunishmentCustom = "15";
+    private string _adminBanPreset = "60";
+    private string _adminBanCustom = "60";
+    private string _adminRoomName = string.Empty;
+    private int _adminRoomMax = 2;
+    private IReadOnlyList<RoomBanView> _roomBans = [];
+    private DateTimeOffset _moderationNow = DateTimeOffset.UtcNow;
+    private CancellationTokenSource? _moderationClockCts;
 
     private IJSObjectReference? _jsModule;
     private DotNetObjectReference<Room>? _dotNetRef;
@@ -2209,7 +2514,26 @@ else
     private bool ShowWebInstallOption =>
         ShowCompanionAppOption && !_installStandalone;
 
-    private bool CanSendChat => !string.IsNullOrWhiteSpace(_chatDraft);
+    private bool CanSendChat => CanUseChat && !string.IsNullOrWhiteSpace(_chatDraft);
+
+    private bool CanUseChat => _self is null || !_self.ChatBlocked;
+
+    private bool CanUseMic =>
+        _self is null || (!_self.MicBlocked && !IsPunishedNow(_self));
+
+    private bool CanUseCamera =>
+        _self is null || (!_self.CameraBlocked && !IsPunishedNow(_self));
+
+    private bool CanUseScreen =>
+        _self is null || (!_self.ScreenBlocked && !IsPunishedNow(_self));
+
+    private bool IsPunishedNow(ParticipantView participant) =>
+        participant.PunishedUntil is { } until && until > _moderationNow;
+
+    private ParticipantView? AdminTarget =>
+        _moderationTarget is null
+            ? null
+            : _room?.Participants.FirstOrDefault(p => p.Id == _moderationTarget.Id);
 
     private bool HasUserMessages => _messages.Any(message => !message.IsSystem);
 
@@ -2263,12 +2587,50 @@ else
             return;
         }
 
+        try
+        {
+            _deviceFingerprint = await JS.InvokeAsync<string>("onda.getDeviceFingerprint");
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException)
+        {
+            _deviceFingerprint = Guest.DeviceId;
+        }
+        if (string.IsNullOrWhiteSpace(_deviceFingerprint))
+        {
+            _deviceFingerprint = Guest.DeviceId;
+        }
+
+        if (Rooms.GetActiveBan(Code, _deviceFingerprint) is { } activeBan)
+        {
+            ShowModerationNotice(new ModerationNoticeView(
+                "ban",
+                activeBan.Reason,
+                activeBan.ExpiresAt,
+                activeBan.Permanent));
+            _isLoading = false;
+            return;
+        }
+
         if ((!_roomInfo.RequiresPassword || _handoffBypass) && !_roomInfo.IsFull)
         {
-            var result = Rooms.JoinRoom(Code, Guest.Id, Guest.AvatarTone, Guest.Name, null);
+            var result = Rooms.JoinRoom(
+                Code,
+                Guest.Id,
+                Guest.AvatarTone,
+                Guest.Name,
+                null,
+                _deviceFingerprint);
             if (result.Status == JoinRoomStatus.Success && result.Room is not null)
             {
                 EnterRoom(result.Room);
+            }
+            else if (result.Status == JoinRoomStatus.Banned)
+            {
+                ShowModerationNotice(new ModerationNoticeView(
+                    "ban",
+                    result.Ban?.Reason ?? result.Error,
+                    result.Ban?.ExpiresAt,
+                    result.Ban?.Permanent ?? true));
             }
             else
             {
@@ -2291,6 +2653,594 @@ else
         _gateError = null;
         _showGatePassword = false;
         StartServerPresenceLoop();
+        StartModerationClock();
+    }
+
+    private void OpenAdminDialog(ParticipantView participant)
+    {
+        if (_self?.IsOwner != true || participant.Id == Guest.Id)
+        {
+            return;
+        }
+
+        CloseRoomMenus();
+        _moderationTarget = participant;
+        _adminError = null;
+        _adminKickReason = string.Empty;
+        _adminBanReason = string.Empty;
+        _adminPunishmentPreset = "15";
+        _adminPunishmentCustom = "15";
+        _adminBanPreset = "60";
+        _adminBanCustom = "60";
+        _showAdminDialog = true;
+    }
+
+    private void CloseAdminDialog()
+    {
+        if (_adminBusy)
+        {
+            return;
+        }
+        _showAdminDialog = false;
+        _moderationTarget = null;
+        _adminError = null;
+    }
+
+    private async Task ToggleAllBlocksAsync(ParticipantView target)
+    {
+        var allBlocked = target.MicBlocked && target.CameraBlocked &&
+            target.ScreenBlocked && target.ChatBlocked;
+        await SetBlockAsync(target, "all", !allBlocked);
+    }
+
+    private async Task SetBlockAsync(ParticipantView target, string action, bool blocked)
+    {
+        if (_adminBusy)
+        {
+            return;
+        }
+
+        _adminBusy = true;
+        _adminError = null;
+        try
+        {
+            if (!Rooms.SetBlock(Code, Guest.Id, target.Id, action, blocked, out var error))
+            {
+                _adminError = error;
+                return;
+            }
+
+            RefreshAdminTarget();
+        }
+        finally
+        {
+            _adminBusy = false;
+        }
+    }
+
+    private Task SetMicBlockAsync(ParticipantView target) =>
+        SetBlockAsync(target, "mic", !target.MicBlocked);
+
+    private Task SetCameraBlockAsync(ParticipantView target) =>
+        SetBlockAsync(target, "camera", !target.CameraBlocked);
+
+    private Task SetScreenBlockAsync(ParticipantView target) =>
+        SetBlockAsync(target, "screen", !target.ScreenBlocked);
+
+    private Task SetChatBlockAsync(ParticipantView target) =>
+        SetBlockAsync(target, "chat", !target.ChatBlocked);
+
+    private async Task ApplyPunishmentAsync()
+    {
+        if (AdminTarget is not { } target || _adminBusy)
+        {
+            return;
+        }
+
+        if (!TryReadMinutes(_adminPunishmentPreset, _adminPunishmentCustom, 1, 10080, out var minutes))
+        {
+            _adminError = "Informe uma duração de castigo entre 1 minuto e 7 dias.";
+            return;
+        }
+
+        _adminBusy = true;
+        _adminError = null;
+        try
+        {
+            if (!Rooms.SetPunishment(Code, Guest.Id, target.Id, minutes, remove: false, out var error))
+            {
+                _adminError = error;
+                return;
+            }
+            RefreshAdminTarget();
+        }
+        finally
+        {
+            _adminBusy = false;
+        }
+    }
+
+    private async Task RemovePunishmentAsync()
+    {
+        if (AdminTarget is not { } target || _adminBusy)
+        {
+            return;
+        }
+
+        _adminBusy = true;
+        _adminError = null;
+        try
+        {
+            if (!Rooms.SetPunishment(Code, Guest.Id, target.Id, null, remove: true, out var error))
+            {
+                _adminError = error;
+                return;
+            }
+            RefreshAdminTarget();
+        }
+        finally
+        {
+            _adminBusy = false;
+        }
+    }
+
+    private async Task KickParticipantAsync()
+    {
+        if (AdminTarget is not { } target || _adminBusy)
+        {
+            return;
+        }
+
+        _adminBusy = true;
+        _adminError = null;
+        try
+        {
+            if (!Rooms.KickParticipant(Code, Guest.Id, target.Id, _adminKickReason, out var error))
+            {
+                _adminError = error;
+                return;
+            }
+
+            _showAdminDialog = false;
+            _moderationTarget = null;
+            Toasts.Show($"{target.Name} foi expulso da sala.", ToastKind.Success);
+        }
+        finally
+        {
+            _adminBusy = false;
+        }
+    }
+
+    private async Task BanParticipantAsync()
+    {
+        if (AdminTarget is not { } target || _adminBusy)
+        {
+            return;
+        }
+
+        int? minutes;
+        if (_adminBanPreset == "permanent")
+        {
+            minutes = null;
+        }
+        else if (!TryReadMinutes(_adminBanPreset, _adminBanCustom, 1, 525600, out var parsed))
+        {
+            _adminError = "Informe uma duração de banimento válida.";
+            return;
+        }
+        else
+        {
+            minutes = parsed;
+        }
+
+        _adminBusy = true;
+        _adminError = null;
+        try
+        {
+            if (!Rooms.BanParticipant(
+                    Code,
+                    Guest.Id,
+                    target.Id,
+                    _adminBanReason,
+                    minutes,
+                    out _,
+                    out var error))
+            {
+                _adminError = error;
+                return;
+            }
+
+            _showAdminDialog = false;
+            _moderationTarget = null;
+            Toasts.Show($"{target.Name} foi banido da sala.", ToastKind.Success);
+        }
+        finally
+        {
+            _adminBusy = false;
+        }
+    }
+
+    private async Task TransferOwnershipAsync()
+    {
+        if (AdminTarget is not { } target || _adminBusy)
+        {
+            return;
+        }
+
+        _adminBusy = true;
+        _adminError = null;
+        try
+        {
+            if (!Rooms.TransferOwnership(Code, Guest.Id, target.Id, out var error))
+            {
+                _adminError = error;
+                return;
+            }
+
+            _showAdminDialog = false;
+            _moderationTarget = null;
+            Toasts.Show($"A administração agora é de {target.Name}.", ToastKind.Success);
+        }
+        finally
+        {
+            _adminBusy = false;
+        }
+    }
+
+    private void RefreshAdminTarget()
+    {
+        var id = _moderationTarget?.Id;
+        _moderationTarget = id is null
+            ? null
+            : _room?.Participants.FirstOrDefault(p => p.Id == id);
+        if (_moderationTarget is null)
+        {
+            _showAdminDialog = false;
+        }
+    }
+
+    private static bool TryReadMinutes(
+        string? preset,
+        string? custom,
+        int min,
+        int max,
+        out int minutes)
+    {
+        minutes = 0;
+        if (string.Equals(preset, "custom", StringComparison.Ordinal))
+        {
+            return int.TryParse(custom, out minutes) && minutes >= min && minutes <= max;
+        }
+        return int.TryParse(preset, out minutes) && minutes >= min && minutes <= max;
+    }
+
+    private async Task OpenBansFromMenu()
+    {
+        CloseRoomMenus();
+        _adminError = null;
+        _showBansDialog = true;
+        _roomBans = Rooms.GetBans(Code, Guest.Id);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private Task CloseBansDialogAsync()
+    {
+        _showBansDialog = false;
+        _adminError = null;
+        return Task.CompletedTask;
+    }
+
+    private async Task RemoveBanAsync(string banId)
+    {
+        if (_adminBusy)
+        {
+            return;
+        }
+
+        _adminBusy = true;
+        _adminError = null;
+        try
+        {
+            if (!Rooms.RemoveBan(Code, Guest.Id, banId, out var error))
+            {
+                _adminError = error;
+                return;
+            }
+            _roomBans = Rooms.GetBans(Code, Guest.Id);
+        }
+        finally
+        {
+            _adminBusy = false;
+        }
+    }
+
+    private void OpenRoomSettingsFromMenu()
+    {
+        if (_self?.IsOwner != true)
+        {
+            return;
+        }
+
+        CloseRoomMenus();
+        _adminError = null;
+        _adminRoomName = _room?.Name ?? string.Empty;
+        _adminRoomMax = _room?.MaxParticipants ?? MediaSettings.EffectiveMaxParticipants;
+        _showRoomSettingsDialog = true;
+    }
+
+    private void CloseRoomSettingsDialog()
+    {
+        if (_adminBusy)
+        {
+            return;
+        }
+        _showRoomSettingsDialog = false;
+        _adminError = null;
+    }
+
+    private async Task SaveRoomSettingsAsync()
+    {
+        if (_adminBusy)
+        {
+            return;
+        }
+
+        _adminBusy = true;
+        _adminError = null;
+        try
+        {
+            if (!Rooms.UpdateRoomSettings(
+                    Code,
+                    Guest.Id,
+                    _adminRoomName,
+                    _adminRoomMax,
+                    out var error))
+            {
+                _adminError = error;
+                return;
+            }
+
+            _showRoomSettingsDialog = false;
+            Toasts.Show("Configurações da sala atualizadas.", ToastKind.Success);
+        }
+        finally
+        {
+            _adminBusy = false;
+        }
+    }
+
+    private string PunishmentRemaining(DateTimeOffset? until)
+    {
+        if (until is null)
+        {
+            return "0:00";
+        }
+
+        var remaining = until.Value - _moderationNow;
+        if (remaining <= TimeSpan.Zero)
+        {
+            return "0:00";
+        }
+        if (remaining.TotalHours >= 1)
+        {
+            return $"{(int)remaining.TotalHours}:{remaining.Minutes:00}:{remaining.Seconds:00}";
+        }
+        return $"{remaining.Minutes}:{remaining.Seconds:00}";
+    }
+
+    private static string BanDurationLabel(DateTimeOffset? expiresAt, bool permanent)
+    {
+        if (permanent || expiresAt is null)
+        {
+            return "Permanente";
+        }
+
+        var remaining = expiresAt.Value - DateTimeOffset.UtcNow;
+        if (remaining <= TimeSpan.Zero)
+        {
+            return "Expirado";
+        }
+        if (remaining.TotalDays >= 1)
+        {
+            return $"{(int)remaining.TotalDays} dia(s) restante(s)";
+        }
+        if (remaining.TotalHours >= 1)
+        {
+            return $"{(int)remaining.TotalHours} hora(s) restante(s)";
+        }
+        return $"{Math.Max(1, (int)Math.Ceiling(remaining.TotalMinutes))} minuto(s) restante(s)";
+    }
+
+    private string ParticipantStatusIcon(ParticipantView person)
+    {
+        if (IsPunishedNow(person))
+        {
+            return "clock";
+        }
+        if (person.MicBlocked)
+        {
+            return "mic-off";
+        }
+        if (person.ChatBlocked)
+        {
+            return "chat";
+        }
+        return person.MicOn ? "mic" : "mic-off";
+    }
+
+    private string ParticipantStatusText(ParticipantView person)
+    {
+        if (IsPunishedNow(person))
+        {
+            return $"De castigo · {PunishmentRemaining(person.PunishedUntil)}";
+        }
+        if (person.MicBlocked)
+        {
+            return "Microfone bloqueado";
+        }
+        if (person.ChatBlocked)
+        {
+            return "Chat bloqueado";
+        }
+        return person.Speaking
+            ? "Falando agora"
+            : person.MicOn ? "Microfone ligado" : "Silenciado";
+    }
+
+    private void ShowModerationNotice(ModerationNoticeView notice)
+    {
+        _moderationNotice = notice;
+        _showModerationDialog = true;
+        _joined = false;
+        StopServerPresenceLoop();
+        _moderationClockCts?.Cancel();
+        _ = StopModeratedSessionAsync();
+    }
+
+    private bool TryShowModerationNotice()
+    {
+        if (_moderationNotice is not null)
+        {
+            return true;
+        }
+
+        var notice = Rooms.TakeNotice(Code, Guest.Id);
+        if (notice is null)
+        {
+            return false;
+        }
+
+        ShowModerationNotice(notice);
+        return true;
+    }
+
+    private async Task StopModeratedSessionAsync()
+    {
+        try
+        {
+            await StopPresenceHeartbeatAsync();
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+        }
+
+        try
+        {
+            await StopNativeCallAsync();
+        }
+        catch
+        {
+            // A chamada nativa pode não estar ativa.
+        }
+
+        if (_jsModule is not null)
+        {
+            try
+            {
+                await _jsModule.InvokeVoidAsync("disposeRoom");
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException or ObjectDisposedException)
+            {
+            }
+        }
+    }
+
+    private async Task FinishModerationExitAsync()
+    {
+        if (_moderationExitStarted)
+        {
+            return;
+        }
+        _moderationExitStarted = true;
+        _showModerationDialog = false;
+        await InvokeAsync(() => Nav.NavigateTo("/", forceLoad: true));
+    }
+
+    private async Task ApplySelfModerationAsync()
+    {
+        if (_self is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_localMicOn && !CanUseMic)
+            {
+                if (_nativeMedia)
+                {
+                    await JS.InvokeVoidAsync("onda.setNativeMic", false);
+                    await OnLocalMediaStateChanged(false, true, _localCameraOn, _localScreenOn, _localScreenWithAudio);
+                }
+                else if (_jsModule is not null)
+                {
+                    await _jsModule.InvokeVoidAsync("toggleMicrophone");
+                }
+            }
+
+            if (_localCameraOn && !CanUseCamera)
+            {
+                if (_nativeMedia)
+                {
+                    await JS.InvokeAsync<bool>("onda.setNativeCamera", false);
+                    await OnLocalMediaStateChanged(_localMicOn, true, false, _localScreenOn, _localScreenWithAudio);
+                }
+                else if (_jsModule is not null)
+                {
+                    await _jsModule.InvokeVoidAsync("toggleCamera");
+                }
+            }
+
+            if (_localScreenOn && !CanUseScreen)
+            {
+                if (_nativeMedia)
+                {
+                    await JS.InvokeVoidAsync("onda.stopNativeScreenShare");
+                    await OnLocalMediaStateChanged(_localMicOn, true, _localCameraOn, false, false);
+                }
+                else if (_jsModule is not null)
+                {
+                    await _jsModule.InvokeVoidAsync("toggleScreenShare");
+                }
+            }
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+        {
+            // O snapshot e o servidor continuam bloqueando a ação.
+        }
+    }
+
+    private void StartModerationClock()    {
+        _moderationClockCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _moderationClockCts = cts;
+        _ = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            try
+            {
+                while (await timer.WaitForNextTickAsync(cts.Token))
+                {
+                    if (_disposed)
+                    {
+                        return;
+                    }
+
+                    await InvokeAsync(() =>
+                    {
+                        _moderationNow = DateTimeOffset.UtcNow;
+                        if (_room?.Participants.Any(p => p.IsPunished) == true)
+                        {
+                            StateHasChanged();
+                        }
+                    });
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Page disposed.
+            }
+        });
     }
 
     private void StartServerPresenceLoop()
@@ -2979,6 +3929,20 @@ else
         _room = room;
         _self = room.Participants.FirstOrDefault(p => p.Id == Guest.Id);
 
+        if (_self?.IsOwner != true)
+        {
+            _showAdminDialog = false;
+            _showBansDialog = false;
+            _showRoomSettingsDialog = false;
+            _moderationTarget = null;
+        }
+        else if (_moderationTarget is not null &&
+                 room.Participants.All(p => p.Id != _moderationTarget.Id))
+        {
+            _showAdminDialog = false;
+            _moderationTarget = null;
+        }
+
         foreach (var participant in room.Participants)
         {
             _voiceVolumes.TryAdd(participant.Id, 80);
@@ -3034,9 +3998,16 @@ else
 
         if (_self is null)
         {
+            if (TryShowModerationNotice())
+            {
+                return;
+            }
+
             TryRestorePresence();
             return;
         }
+
+        _ = ApplySelfModerationAsync();
     }
 
     private void TryRestorePresence()
@@ -3051,7 +4022,16 @@ else
         {
             try
             {
-                var result = Rooms.JoinRoom(Code, Guest.Id, Guest.AvatarTone, Guest.Name, _gatePassword);
+                var result = Rooms.JoinRoom(Code, Guest.Id, Guest.AvatarTone, Guest.Name, _gatePassword, _deviceFingerprint);
+                if (result.Status == JoinRoomStatus.Banned)
+                {
+                    ShowModerationNotice(new ModerationNoticeView(
+                        "ban",
+                        result.Ban?.Reason ?? result.Error,
+                        result.Ban?.ExpiresAt,
+                        result.Ban?.Permanent ?? true));
+                    return;
+                }
                 if (result.Status == JoinRoomStatus.Success && result.Room is not null)
                 {
                     _room = result.Room;
@@ -4161,10 +5141,18 @@ else
         try
         {
             await Task.Delay(180);
-            var result = Rooms.JoinRoom(Code, Guest.Id, Guest.AvatarTone, Guest.Name, _gatePassword);
+            var result = Rooms.JoinRoom(Code, Guest.Id, Guest.AvatarTone, Guest.Name, _gatePassword, _deviceFingerprint);
             if (result.Status == JoinRoomStatus.Success && result.Room is not null)
             {
                 EnterRoom(result.Room);
+            }
+            else if (result.Status == JoinRoomStatus.Banned)
+            {
+                ShowModerationNotice(new ModerationNoticeView(
+                    "ban",
+                    result.Ban?.Reason ?? result.Error,
+                    result.Ban?.ExpiresAt,
+                    result.Ban?.Permanent ?? true));
             }
             else
             {
@@ -4193,10 +5181,18 @@ else
         try
         {
             await Task.Delay(140);
-            var result = Rooms.JoinRoom(Code, Guest.Id, Guest.AvatarTone, Guest.Name, null);
+            var result = Rooms.JoinRoom(Code, Guest.Id, Guest.AvatarTone, Guest.Name, null, _deviceFingerprint);
             if (result.Status == JoinRoomStatus.Success && result.Room is not null)
             {
                 EnterRoom(result.Room);
+            }
+            else if (result.Status == JoinRoomStatus.Banned)
+            {
+                ShowModerationNotice(new ModerationNoticeView(
+                    "ban",
+                    result.Ban?.Reason ?? result.Error,
+                    result.Ban?.ExpiresAt,
+                    result.Ban?.Permanent ?? true));
             }
             else
             {
@@ -5302,6 +6298,8 @@ else
 
         _disposed = true;
         StopServerPresenceLoop();
+        _moderationClockCts?.Cancel();
+        _moderationClockCts = null;
         Rooms.RoomChanged -= HandleRoomChanged;
         Rooms.ChatChanged -= HandleChatChanged;
         Rooms.SignalReceived -= HandleSignal;

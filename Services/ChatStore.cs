@@ -12,7 +12,8 @@ public sealed record PersistedRoom(
     DateTimeOffset LastActivityAt,
     DateTimeOffset? EmptySince,
     string? PasswordSalt,
-    string? PasswordHash);
+    string? PasswordHash,
+    int MaxParticipants);
 
 /// <summary>
 /// SQLite-backed persistence for room metadata, visit history and chat.
@@ -63,18 +64,19 @@ public sealed class ChatStore
         DateTimeOffset createdAt,
         string? passwordSalt,
         string? passwordHash,
-        DateTimeOffset? emptySince)
+        DateTimeOffset? emptySince,
+        int maxParticipants)
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
         command.CommandText = """
             INSERT INTO rooms (
                 id, name, owner_id, owner_name, created_at_ms, last_activity_ms,
-                password_salt, password_hash, empty_since_ms
+                password_salt, password_hash, empty_since_ms, max_participants
             )
             VALUES (
                 $id, $name, $ownerId, $ownerName, $createdAt, $lastActivity,
-                $passwordSalt, $passwordHash, $emptySince
+                $passwordSalt, $passwordHash, $emptySince, $maxParticipants
             );
             """;
         command.Parameters.AddWithValue("$id", id);
@@ -88,6 +90,7 @@ public sealed class ChatStore
         command.Parameters.AddWithValue(
             "$emptySince",
             emptySince.HasValue ? emptySince.Value.ToUnixTimeMilliseconds() : DBNull.Value);
+        command.Parameters.AddWithValue("$maxParticipants", maxParticipants);
         command.ExecuteNonQuery();
     }
 
@@ -106,13 +109,178 @@ public sealed class ChatStore
         command.ExecuteNonQuery();
     }
 
+    public void UpdateOwner(string roomId, string ownerId, string ownerName, DateTimeOffset now)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE rooms
+            SET owner_id = $ownerId,
+                owner_name = $ownerName,
+                last_activity_ms = $lastActivity
+            WHERE id = $id;
+            """;
+        command.Parameters.AddWithValue("$ownerId", ownerId);
+        command.Parameters.AddWithValue("$ownerName", ownerName);
+        command.Parameters.AddWithValue("$lastActivity", now.ToUnixTimeMilliseconds());
+        command.Parameters.AddWithValue("$id", roomId);
+        command.ExecuteNonQuery();
+    }
+
+    public void UpdateRoomSettings(
+        string roomId,
+        string name,
+        int maxParticipants,
+        DateTimeOffset now)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE rooms
+            SET name = $name,
+                max_participants = $maxParticipants,
+                last_activity_ms = $lastActivity
+            WHERE id = $id;
+            """;
+        command.Parameters.AddWithValue("$name", name);
+        command.Parameters.AddWithValue("$maxParticipants", maxParticipants);
+        command.Parameters.AddWithValue("$lastActivity", now.ToUnixTimeMilliseconds());
+        command.Parameters.AddWithValue("$id", roomId);
+        command.ExecuteNonQuery();
+    }
+
+    public RoomBanView? GetActiveBan(string roomId, string deviceId, DateTimeOffset now)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+        {
+            return null;
+        }
+
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, guest_name, reason, banned_at_ms, expires_at_ms, banned_by_name,
+                   device_id
+            FROM room_bans
+            WHERE room_id = $roomId
+              AND device_id = $deviceId
+              AND (expires_at_ms IS NULL OR expires_at_ms > $now)
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$roomId", roomId);
+        command.Parameters.AddWithValue("$deviceId", deviceId);
+        command.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return null;
+        }
+
+        return new RoomBanView(
+            reader.GetString(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(3)),
+            reader.IsDBNull(4) ? null : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(4)),
+            reader.GetString(5),
+            reader.GetString(6),
+            reader.IsDBNull(4));
+    }
+
+    public IReadOnlyList<RoomBanView> GetBans(string roomId, DateTimeOffset now)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, guest_name, reason, banned_at_ms, expires_at_ms, banned_by_name,
+                   device_id
+            FROM room_bans
+            WHERE room_id = $roomId
+              AND (expires_at_ms IS NULL OR expires_at_ms > $now)
+            ORDER BY banned_at_ms DESC;
+            """;
+        command.Parameters.AddWithValue("$roomId", roomId);
+        command.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+
+        var bans = new List<RoomBanView>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            bans.Add(new RoomBanView(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(3)),
+                reader.IsDBNull(4) ? null : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(4)),
+                reader.GetString(5),
+                reader.GetString(6),
+                reader.IsDBNull(4)));
+        }
+
+        return bans;
+    }
+
+    public void UpsertBan(
+        string roomId,
+        string deviceId,
+        string guestName,
+        string reason,
+        DateTimeOffset bannedAt,
+        DateTimeOffset? expiresAt,
+        string bannedByName)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO room_bans (
+                id, room_id, device_id, guest_name, reason, banned_at_ms,
+                expires_at_ms, banned_by_name
+            )
+            VALUES (
+                $id, $roomId, $deviceId, $guestName, $reason, $bannedAt,
+                $expiresAt, $bannedByName
+            )
+            ON CONFLICT(room_id, device_id) DO UPDATE SET
+                guest_name = excluded.guest_name,
+                reason = excluded.reason,
+                banned_at_ms = excluded.banned_at_ms,
+                expires_at_ms = excluded.expires_at_ms,
+                banned_by_name = excluded.banned_by_name;
+            """;
+        command.Parameters.AddWithValue("$id", Guid.NewGuid().ToString("N"));
+        command.Parameters.AddWithValue("$roomId", roomId);
+        command.Parameters.AddWithValue("$deviceId", deviceId);
+        command.Parameters.AddWithValue("$guestName", guestName);
+        command.Parameters.AddWithValue("$reason", reason);
+        command.Parameters.AddWithValue("$bannedAt", bannedAt.ToUnixTimeMilliseconds());
+        command.Parameters.AddWithValue(
+            "$expiresAt",
+            expiresAt.HasValue ? expiresAt.Value.ToUnixTimeMilliseconds() : DBNull.Value);
+        command.Parameters.AddWithValue("$bannedByName", bannedByName);
+        command.ExecuteNonQuery();
+    }
+
+    public bool RemoveBan(string roomId, string banId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            DELETE FROM room_bans
+            WHERE room_id = $roomId AND id = $banId;
+            """;
+        command.Parameters.AddWithValue("$roomId", roomId);
+        command.Parameters.AddWithValue("$banId", banId);
+        return command.ExecuteNonQuery() > 0;
+    }
+
     public PersistedRoom? GetRoom(string roomId)
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT id, name, owner_id, owner_name, created_at_ms, last_activity_ms,
-                   empty_since_ms, password_salt, password_hash
+                   empty_since_ms, password_salt, password_hash, max_participants
             FROM rooms
             WHERE id = $id
             LIMIT 1;
@@ -134,7 +302,8 @@ public sealed class ChatStore
             DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(5)),
             reader.IsDBNull(6) ? null : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(6)),
             reader.IsDBNull(7) ? null : reader.GetString(7),
-            reader.IsDBNull(8) ? null : reader.GetString(8));
+            reader.IsDBNull(8) ? null : reader.GetString(8),
+            reader.IsDBNull(9) ? 0 : reader.GetInt32(9));
     }
 
     public int CountRooms()
@@ -443,7 +612,8 @@ public sealed class ChatStore
                     last_activity_ms INTEGER NOT NULL,
                     password_salt TEXT NULL,
                     password_hash TEXT NULL,
-                    empty_since_ms INTEGER NULL
+                    empty_since_ms INTEGER NULL,
+                    max_participants INTEGER NOT NULL DEFAULT 0
                 );
 
                 CREATE TABLE IF NOT EXISTS room_messages (
@@ -476,11 +646,28 @@ public sealed class ChatStore
 
                 CREATE INDEX IF NOT EXISTS ix_room_visits_room_guest
                     ON room_visits(room_id, guest_id, joined_at_ms);
+
+                CREATE TABLE IF NOT EXISTS room_bans (
+                    id TEXT NOT NULL PRIMARY KEY,
+                    room_id TEXT NOT NULL,
+                    device_id TEXT NOT NULL,
+                    guest_name TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    banned_at_ms INTEGER NOT NULL,
+                    expires_at_ms INTEGER NULL,
+                    banned_by_name TEXT NOT NULL,
+                    FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+                    UNIQUE (room_id, device_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS ix_room_bans_room_device
+                    ON room_bans(room_id, device_id);
                 """;
             schema.ExecuteNonQuery();
         }
 
         EnsureRoomColumn(connection, "empty_since_ms", "INTEGER NULL");
+        EnsureRoomColumn(connection, "max_participants", "INTEGER NOT NULL DEFAULT 0");
 
         // This index must be created only after the column exists on databases
         // created by older versions. Creating it in the schema batch above

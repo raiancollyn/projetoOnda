@@ -43,6 +43,8 @@ public sealed class RoomService
     private readonly object _sync = new();
     private readonly Dictionary<string, RoomState> _rooms = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, HandoffState> _handoffs = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Dictionary<string, ModerationNoticeView>> _notices =
+        new(StringComparer.OrdinalIgnoreCase);
     private readonly TimeProvider _time;
     private readonly ILogger<RoomService> _logger;
     private readonly MediaOptions _media;
@@ -94,7 +96,10 @@ public sealed class RoomService
             LastActivityAt = persisted.LastActivityAt,
             EmptySince = persisted.EmptySince,
             PasswordSalt = persisted.PasswordSalt,
-            PasswordHash = persisted.PasswordHash
+            PasswordHash = persisted.PasswordHash,
+            MaxParticipants = persisted.MaxParticipants > 0
+                ? Math.Clamp(persisted.MaxParticipants, 2, MaxParticipantsPerRoom)
+                : MaxParticipantsPerRoom
         };
 
         _rooms[room.Id] = room;
@@ -215,7 +220,8 @@ public sealed class RoomService
                 LastActivityAt = now,
                 EmptySince = now,
                 PasswordSalt = passwordSalt,
-                PasswordHash = passwordHash
+                PasswordHash = passwordHash,
+                MaxParticipants = MaxParticipantsPerRoom
             };
 
             try
@@ -228,7 +234,8 @@ public sealed class RoomService
                     room.CreatedAt,
                     room.PasswordSalt,
                     room.PasswordHash,
-                    room.EmptySince);
+                    room.EmptySince,
+                    room.MaxParticipants);
             }
             catch (Exception ex)
             {
@@ -269,9 +276,9 @@ public sealed class RoomService
                 room.Name,
                 room.HasPassword,
                 RequiresPassword: room.HasPassword && !isOwner && !isParticipant,
-                IsFull: !isParticipant && room.Participants.Count >= MaxParticipantsPerRoom,                IsOwner: isOwner,
+                IsFull: !isParticipant && room.Participants.Count >= room.MaxParticipants,                IsOwner: isOwner,
                 ParticipantCount: room.Participants.Count,
-                MaxParticipants: MaxParticipantsPerRoom,
+                MaxParticipants: room.MaxParticipants,
                 OwnerName: room.OwnerName);
         }
     }
@@ -468,7 +475,41 @@ public sealed class RoomService
         }
     }
 
-    public JoinRoomResult JoinRoom(string? rawCode, string guestId, int avatarTone, string? guestName, string? password)
+    public RoomBanView? GetActiveBan(string? rawCode, string? deviceId)
+    {
+        var code = InputRules.NormalizeRoomCode(rawCode);
+        var normalizedDeviceId = NormalizeDeviceId(deviceId);
+        if (code is null || string.IsNullOrEmpty(normalizedDeviceId))
+        {
+            return null;
+        }
+
+        lock (_sync)
+        {
+            var room = EnsureRoomLocked(code);
+            if (room is null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return _chatStore.GetActiveBan(room.Id, normalizedDeviceId, _time.GetUtcNow());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Could not check ban for room {RoomCode}.", code);
+                return null;
+            }
+        }
+    }
+
+    public JoinRoomResult JoinRoom(        string? rawCode,
+        string guestId,
+        int avatarTone,
+        string? guestName,
+        string? password,
+        string? deviceId = null)
     {
         if (string.IsNullOrWhiteSpace(guestId))
         {
@@ -501,6 +542,22 @@ public sealed class RoomService
                 return new JoinRoomResult(JoinRoomStatus.NotFound, "Essa sala não existe mais.", null);
             }
 
+            var normalizedDeviceId = NormalizeDeviceId(deviceId);
+            if (!string.IsNullOrEmpty(normalizedDeviceId))
+            {
+                var ban = _chatStore.GetActiveBan(room.Id, normalizedDeviceId, now);
+                if (ban is not null)
+                {
+                    return new JoinRoomResult(
+                        JoinRoomStatus.Banned,
+                        string.IsNullOrWhiteSpace(ban.Reason)
+                            ? "Você foi banido desta sala."
+                            : $"Você foi banido desta sala: {ban.Reason}",
+                        null,
+                        ban);
+                }
+            }
+
             if (room.RevokedGuestIds.Contains(guestId))
             {
                 return new JoinRoomResult(
@@ -516,6 +573,10 @@ public sealed class RoomService
                 var nameChanged = !string.Equals(existing.Name, normalizedName, StringComparison.Ordinal);
                 existing.Name = normalizedName;
                 existing.LastSeen = now;
+                if (!string.IsNullOrEmpty(normalizedDeviceId))
+                {
+                    existing.DeviceId = normalizedDeviceId;
+                }
                 if (string.Equals(room.OwnerId, guestId, StringComparison.Ordinal))
                 {
                     room.OwnerName = normalizedName;
@@ -533,6 +594,7 @@ public sealed class RoomService
                     PersistEmptySinceLocked(room);
                 }
                 changed = nameChanged || wasEmpty;
+                ClearNoticeLocked(room.Id, guestId);
                 snapshot = ToViewLocked(room, includeMessages: true);
             }
             else if (room.HasPassword && !string.Equals(room.OwnerId, guestId, StringComparison.Ordinal) && !handoffBypass)
@@ -546,7 +608,7 @@ public sealed class RoomService
 
             if (status == JoinRoomStatus.Success && snapshot is null)
             {
-                if (room.Participants.Count >= MaxParticipantsPerRoom)
+                if (room.Participants.Count >= room.MaxParticipants)
                 {
                     status = JoinRoomStatus.Full;
                     error = "Esta sala já está cheia.";
@@ -566,13 +628,15 @@ public sealed class RoomService
                         Name = normalizedName,
                         AvatarTone = Math.Clamp(avatarTone, 0, GuestSession.AvatarToneCount - 1),
                         JoinedAt = now,
-                        LastSeen = now
+                        LastSeen = now,
+                        DeviceId = normalizedDeviceId
                     };
 
                     room.EmptySince = null;
                     PersistEmptySinceLocked(room);
                     StartVisitLocked(room, room.Participants[guestId]);
                     chatChanged = AddSystemMessageLocked(room, $"{normalizedName} entrou na sala.");
+                    ClearNoticeLocked(room.Id, guestId);
                     room.LastActivityAt = now;
                     snapshot = ToViewLocked(room, includeMessages: true);
                     changed = true;
@@ -726,6 +790,12 @@ public sealed class RoomService
                 return;
             }
 
+            var punished = participant.PunishedUntil is { } until && until > _time.GetUtcNow();
+            micOn = micOn && !participant.MicBlocked && !punished;
+            cameraOn = cameraOn && !participant.CameraBlocked && !punished;
+            screenOn = screenOn && !participant.ScreenBlocked && !punished;
+            screenWithAudio = screenOn && screenWithAudio;
+
             changed =
                 participant.MicOn != micOn ||
                 participant.CameraOn != cameraOn ||
@@ -807,6 +877,12 @@ public sealed class RoomService
                 !room.Participants.TryGetValue(guestId, out var participant))
             {
                 error = "Você não está mais nesta sala.";
+                return false;
+            }
+
+            if (participant.ChatBlocked)
+            {
+                error = "O administrador bloqueou o chat para você.";
                 return false;
             }
 
@@ -939,7 +1015,7 @@ public sealed class RoomService
             }
             else
             {
-                if (room.Participants.Count >= MaxParticipantsPerRoom)
+                if (room.Participants.Count >= room.MaxParticipants)
                 {
                     return;
                 }
@@ -992,6 +1068,22 @@ public sealed class RoomService
         {
             foreach (var room in _rooms.Values.ToArray())
             {
+                var expiredPunishments = room.Participants.Values
+                    .Where(p => p.PunishedUntil is { } until && until <= now)
+                    .ToArray();
+                foreach (var participant in expiredPunishments)
+                {
+                    participant.PunishedUntil = null;
+                    if (AddSystemMessageLocked(room, $"O castigo de {participant.Name} terminou."))
+                    {
+                        chatChangedRooms.Add(room.Id);
+                    }
+                }
+                if (expiredPunishments.Length > 0)
+                {
+                    changedRooms.Add(room.Id);
+                }
+
                 var stale = room.Participants.Values
                     .Where(p =>
                         (p.NativeMediaActiveUntil is null || p.NativeMediaActiveUntil <= now) &&
@@ -1177,7 +1269,15 @@ public sealed class RoomService
                 p.ScreenOn,
                 p.ScreenWithAudio,
                 p.Speaking,
-                p.JoinedAt))
+                p.JoinedAt,
+                p.PunishedUntil is { } until && until > _time.GetUtcNow(),
+                p.PunishedUntil is { } punishedUntil && punishedUntil > _time.GetUtcNow()
+                    ? punishedUntil
+                    : null,
+                p.MicBlocked,
+                p.CameraBlocked,
+                p.ScreenBlocked,
+                p.ChatBlocked))
             .ToArray();
 
         IReadOnlyList<ChatMessageView> messages = includeMessages
@@ -1188,7 +1288,7 @@ public sealed class RoomService
             room.Id,
             room.Name,
             room.HasPassword,
-            MaxParticipantsPerRoom,
+            room.MaxParticipants,
             room.CreatedAt,
             room.OwnerName,
             participants,
@@ -1200,8 +1300,654 @@ public sealed class RoomService
     /// when a ChatChanged event arrives, keeping snapshots cheap for media and
     /// speaking updates.
     /// </summary>
-    public IReadOnlyList<ChatMessageView> GetChatMessages(string? rawCode)
+    public bool SetBlock(
+        string? rawCode,
+        string ownerId,
+        string targetId,
+        string action,
+        bool blocked,
+        out string? error)
     {
+        error = null;
+        var code = InputRules.NormalizeRoomCode(rawCode);
+        if (code is null)
+        {
+            error = "Sala não encontrada.";
+            return false;
+        }
+
+        var chatChanged = false;
+        var now = _time.GetUtcNow();
+        lock (_sync)
+        {
+            if (!_rooms.TryGetValue(code, out var room) ||
+                !string.Equals(room.OwnerId, ownerId, StringComparison.Ordinal))
+            {
+                error = "Apenas o administrador da sala pode fazer isso.";
+                return false;
+            }
+
+            if (!room.Participants.TryGetValue(targetId, out var target))
+            {
+                error = "Participante não encontrado.";
+                return false;
+            }
+
+            if (string.Equals(targetId, ownerId, StringComparison.Ordinal))
+            {
+                error = "Você não pode moderar a si mesmo.";
+                return false;
+            }
+
+            var actionKey = (action ?? string.Empty).Trim().ToLowerInvariant();
+            switch (actionKey)
+            {
+                case "all":
+                    target.MicBlocked = blocked;
+                    target.CameraBlocked = blocked;
+                    target.ScreenBlocked = blocked;
+                    target.ChatBlocked = blocked;
+                    break;
+                case "mic":
+                    target.MicBlocked = blocked;
+                    break;
+                case "camera":
+                    target.CameraBlocked = blocked;
+                    break;
+                case "screen":
+                    target.ScreenBlocked = blocked;
+                    break;
+                case "chat":
+                    target.ChatBlocked = blocked;
+                    break;
+                default:
+                    error = "Ação de bloqueio inválida.";
+                    return false;
+            }
+
+            if (blocked)
+            {
+                if (actionKey is "all" or "mic")
+                {
+                    target.MicOn = false;
+                    target.Speaking = false;
+                }
+                if (actionKey is "all" or "camera")
+                {
+                    target.CameraOn = false;
+                }
+                if (actionKey is "all" or "screen")
+                {
+                    target.ScreenOn = false;
+                    target.ScreenWithAudio = false;
+                }
+            }
+
+            var ownerName = room.Participants.GetValueOrDefault(ownerId)?.Name ?? room.OwnerName;
+            var actionLabel = actionKey switch
+            {
+                "all" => "todas as ações",
+                "mic" => "o microfone",
+                "camera" => "a câmera",
+                "screen" => "a tela",
+                _ => "o chat"
+            };
+            var verb = blocked ? "bloqueou" : "desbloqueou";
+            chatChanged = AddSystemMessageLocked(
+                room,
+                $"{ownerName} {verb} {actionLabel} de {target.Name}.");
+            room.LastActivityAt = now;
+        }
+
+        RaiseRoomChanged(code);
+        if (chatChanged)
+        {
+            RaiseChatChanged(code);
+        }
+        return true;
+    }
+
+    public bool SetPunishment(
+        string? rawCode,
+        string ownerId,
+        string targetId,
+        int? durationMinutes,
+        bool remove,
+        out string? error)
+    {
+        error = null;
+        var code = InputRules.NormalizeRoomCode(rawCode);
+        if (code is null)
+        {
+            error = "Sala não encontrada.";
+            return false;
+        }
+
+        var chatChanged = false;
+        var now = _time.GetUtcNow();
+        lock (_sync)
+        {
+            if (!_rooms.TryGetValue(code, out var room) ||
+                !string.Equals(room.OwnerId, ownerId, StringComparison.Ordinal))
+            {
+                error = "Apenas o administrador da sala pode fazer isso.";
+                return false;
+            }
+
+            if (!room.Participants.TryGetValue(targetId, out var target) ||
+                string.Equals(targetId, ownerId, StringComparison.Ordinal))
+            {
+                error = "Participante inválido.";
+                return false;
+            }
+
+            var ownerName = room.Participants.GetValueOrDefault(ownerId)?.Name ?? room.OwnerName;
+            if (remove)
+            {
+                if (target.PunishedUntil is null)
+                {
+                    error = "Este participante não está de castigo.";
+                    return false;
+                }
+
+                target.PunishedUntil = null;
+                chatChanged = AddSystemMessageLocked(
+                    room,
+                    $"{ownerName} removeu o castigo de {target.Name}.");
+            }
+            else
+            {
+                if (durationMinutes is not { } minutes || minutes is < 1 or > 10080)
+                {
+                    error = "Informe um castigo entre 1 minuto e 7 dias.";
+                    return false;
+                }
+
+                target.PunishedUntil = now.AddMinutes(minutes);
+                target.MicOn = false;
+                target.CameraOn = false;
+                target.ScreenOn = false;
+                target.ScreenWithAudio = false;
+                target.Speaking = false;
+                chatChanged = AddSystemMessageLocked(
+                    room,
+                    $"{ownerName} colocou {target.Name} de castigo por {FormatDuration(minutes)}.");
+            }
+
+            room.LastActivityAt = now;
+        }
+
+        RaiseRoomChanged(code);
+        if (chatChanged)
+        {
+            RaiseChatChanged(code);
+        }
+        return true;
+    }
+
+    public bool KickParticipant(
+        string? rawCode,
+        string ownerId,
+        string targetId,
+        string? rawReason,
+        out string? error)
+    {
+        error = null;
+        var code = InputRules.NormalizeRoomCode(rawCode);
+        if (code is null)
+        {
+            error = "Sala não encontrada.";
+            return false;
+        }
+
+        var reason = NormalizeReason(rawReason, 300);
+        var chatChanged = false;
+        var now = _time.GetUtcNow();
+        lock (_sync)
+        {
+            if (!_rooms.TryGetValue(code, out var room) ||
+                !string.Equals(room.OwnerId, ownerId, StringComparison.Ordinal))
+            {
+                error = "Apenas o administrador da sala pode fazer isso.";
+                return false;
+            }
+
+            if (!room.Participants.TryGetValue(targetId, out var target) ||
+                string.Equals(targetId, ownerId, StringComparison.Ordinal))
+            {
+                error = "Participante inválido.";
+                return false;
+            }
+
+            var ownerName = room.Participants.GetValueOrDefault(ownerId)?.Name ?? room.OwnerName;
+            room.Participants.Remove(targetId);
+            EndVisitLocked(room, targetId, now);
+            SetNoticeLocked(
+                room.Id,
+                targetId,
+                new ModerationNoticeView("kick", reason, null, false));
+
+            var suffix = string.IsNullOrWhiteSpace(reason) ? string.Empty : $" Motivo: {reason}";
+            chatChanged = AddSystemMessageLocked(
+                room,
+                $"{ownerName} expulsou {target.Name}.{suffix}");
+            if (room.Participants.Count == 0)
+            {
+                room.EmptySince = now;
+                PersistEmptySinceLocked(room);
+            }
+            room.LastActivityAt = now;
+        }
+
+        RaiseRoomChanged(code);
+        RaiseLobbyChanged();
+        if (chatChanged)
+        {
+            RaiseChatChanged(code);
+        }
+        return true;
+    }
+
+    public bool BanParticipant(
+        string? rawCode,
+        string ownerId,
+        string targetId,
+        string? rawReason,
+        int? durationMinutes,
+        out RoomBanView? ban,
+        out string? error)
+    {
+        ban = null;
+        error = null;
+        var reason = NormalizeReason(rawReason, 300);
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            error = "Informe o motivo do banimento.";
+            return false;
+        }
+        if (durationMinutes is { } minutes && minutes is < 1 or > 525600)
+        {
+            error = "A duração do banimento é inválida.";
+            return false;
+        }
+
+        var code = InputRules.NormalizeRoomCode(rawCode);
+        if (code is null)
+        {
+            error = "Sala não encontrada.";
+            return false;
+        }
+
+        var chatChanged = false;
+        var now = _time.GetUtcNow();
+        lock (_sync)
+        {
+            if (!_rooms.TryGetValue(code, out var room) ||
+                !string.Equals(room.OwnerId, ownerId, StringComparison.Ordinal))
+            {
+                error = "Apenas o administrador da sala pode fazer isso.";
+                return false;
+            }
+
+            if (!room.Participants.TryGetValue(targetId, out var target) ||
+                string.Equals(targetId, ownerId, StringComparison.Ordinal))
+            {
+                error = "Participante inválido.";
+                return false;
+            }
+
+            var deviceId = string.IsNullOrWhiteSpace(target.DeviceId)
+                ? $"session:{targetId}"
+                : target.DeviceId;
+            DateTimeOffset? expiresAt = durationMinutes is { } duration ? now.AddMinutes(duration) : null;
+            var ownerName = room.Participants.GetValueOrDefault(ownerId)?.Name ?? room.OwnerName;
+
+            try
+            {
+                _chatStore.UpsertBan(
+                    room.Id,
+                    deviceId,
+                    target.Name,
+                    reason,
+                    now,
+                    expiresAt,
+                    ownerName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Could not persist a ban for room {RoomCode}.", room.Id);
+                error = "Não foi possível salvar o banimento.";
+                return false;
+            }
+
+            ban = new RoomBanView(
+                string.Empty,
+                target.Name,
+                reason,
+                now,
+                expiresAt,
+                ownerName,
+                deviceId,
+                expiresAt is null);
+
+            room.Participants.Remove(targetId);
+            EndVisitLocked(room, targetId, now);
+            SetNoticeLocked(
+                room.Id,
+                targetId,
+                new ModerationNoticeView("ban", reason, expiresAt, expiresAt is null));
+
+            var durationText = expiresAt is null
+                ? "permanentemente"
+                : $"por {FormatDuration((int)Math.Ceiling((expiresAt.Value - now).TotalMinutes))}";
+            chatChanged = AddSystemMessageLocked(
+                room,
+                $"{ownerName} baniu {target.Name} {durationText}. Motivo: {reason}");
+            if (room.Participants.Count == 0)
+            {
+                room.EmptySince = now;
+                PersistEmptySinceLocked(room);
+            }
+            room.LastActivityAt = now;
+        }
+
+        RaiseRoomChanged(code);
+        RaiseLobbyChanged();
+        if (chatChanged)
+        {
+            RaiseChatChanged(code);
+        }
+        return true;
+    }
+
+    public IReadOnlyList<RoomBanView> GetBans(string? rawCode, string ownerId)
+    {
+        var code = InputRules.NormalizeRoomCode(rawCode);
+        if (code is null)
+        {
+            return [];
+        }
+
+        lock (_sync)
+        {
+            if (!_rooms.TryGetValue(code, out var room) ||
+                !string.Equals(room.OwnerId, ownerId, StringComparison.Ordinal))
+            {
+                return [];
+            }
+        }
+
+        try
+        {
+            return _chatStore.GetBans(code, _time.GetUtcNow());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not read bans for room {RoomCode}.", code);
+            return [];
+        }
+    }
+
+    public bool RemoveBan(string? rawCode, string ownerId, string banId, out string? error)
+    {
+        error = null;
+        var code = InputRules.NormalizeRoomCode(rawCode);
+        if (code is null)
+        {
+            error = "Sala não encontrada.";
+            return false;
+        }
+
+        var chatChanged = false;
+        lock (_sync)
+        {
+            if (!_rooms.TryGetValue(code, out var room) ||
+                !string.Equals(room.OwnerId, ownerId, StringComparison.Ordinal))
+            {
+                error = "Apenas o administrador da sala pode fazer isso.";
+                return false;
+            }
+
+            try
+            {
+                if (!_chatStore.RemoveBan(room.Id, banId))
+                {
+                    error = "Banimento não encontrado.";
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Could not remove a ban for room {RoomCode}.", room.Id);
+                error = "Não foi possível remover o banimento.";
+                return false;
+            }
+
+            var ownerName = room.Participants.GetValueOrDefault(ownerId)?.Name ?? room.OwnerName;
+            chatChanged = AddSystemMessageLocked(room, $"{ownerName} removeu um banimento.");
+        }
+
+        if (chatChanged)
+        {
+            RaiseChatChanged(code);
+        }
+        return true;
+    }
+
+    public bool TransferOwnership(
+        string? rawCode,
+        string ownerId,
+        string targetId,
+        out string? error)
+    {
+        error = null;
+        var code = InputRules.NormalizeRoomCode(rawCode);
+        if (code is null)
+        {
+            error = "Sala não encontrada.";
+            return false;
+        }
+
+        var chatChanged = false;
+        var now = _time.GetUtcNow();
+        lock (_sync)
+        {
+            if (!_rooms.TryGetValue(code, out var room) ||
+                !string.Equals(room.OwnerId, ownerId, StringComparison.Ordinal))
+            {
+                error = "Apenas o administrador da sala pode fazer isso.";
+                return false;
+            }
+
+            if (!room.Participants.TryGetValue(targetId, out var target) ||
+                string.Equals(targetId, ownerId, StringComparison.Ordinal))
+            {
+                error = "Escolha outro participante para administrar a sala.";
+                return false;
+            }
+
+            var previousOwnerName = room.OwnerName;
+            room.OwnerId = target.Id;
+            room.OwnerName = target.Name;
+            PersistOwnerLocked(room, now);
+            chatChanged = AddSystemMessageLocked(
+                room,
+                $"{previousOwnerName} passou a administração da sala para {target.Name}.");
+            room.LastActivityAt = now;
+        }
+
+        RaiseRoomChanged(code);
+        if (chatChanged)
+        {
+            RaiseChatChanged(code);
+        }
+        return true;
+    }
+
+    public bool UpdateRoomSettings(
+        string? rawCode,
+        string ownerId,
+        string? rawName,
+        int maxParticipants,
+        out string? error)
+    {
+        error = null;
+        if (!InputRules.TryNormalizeRoomName(rawName, out var name, out error))
+        {
+            return false;
+        }
+        if (maxParticipants < 2 || maxParticipants > MaxParticipantsPerRoom)
+        {
+            error = $"O limite deve ficar entre 2 e {MaxParticipantsPerRoom} pessoas.";
+            return false;
+        }
+
+        var code = InputRules.NormalizeRoomCode(rawCode);
+        if (code is null)
+        {
+            error = "Sala não encontrada.";
+            return false;
+        }
+
+        var chatChanged = false;
+        var now = _time.GetUtcNow();
+        lock (_sync)
+        {
+            if (!_rooms.TryGetValue(code, out var room) ||
+                !string.Equals(room.OwnerId, ownerId, StringComparison.Ordinal))
+            {
+                error = "Apenas o administrador da sala pode fazer isso.";
+                return false;
+            }
+
+            var nameChanged = !string.Equals(room.Name, name, StringComparison.Ordinal);
+            var maxChanged = room.MaxParticipants != maxParticipants;
+            room.Name = name;
+            room.MaxParticipants = maxParticipants;
+            try
+            {
+                _chatStore.UpdateRoomSettings(room.Id, name, maxParticipants, now);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Could not update room settings for {RoomCode}.", room.Id);
+                error = "Não foi possível salvar as alterações.";
+                return false;
+            }
+
+            if (nameChanged)
+            {
+                chatChanged |= AddSystemMessageLocked(room, $"O nome da sala foi alterado para {name}.");
+            }
+            if (maxChanged)
+            {
+                chatChanged |= AddSystemMessageLocked(
+                    room,
+                    $"O limite da sala foi alterado para {maxParticipants} pessoas.");
+            }
+            room.LastActivityAt = now;
+        }
+
+        RaiseRoomChanged(code);
+        RaiseLobbyChanged();
+        if (chatChanged)
+        {
+            RaiseChatChanged(code);
+        }
+        return true;
+    }
+
+    public ModerationNoticeView? TakeNotice(string? rawCode, string guestId)
+    {
+        var code = InputRules.NormalizeRoomCode(rawCode);
+        if (code is null)
+        {
+            return null;
+        }
+
+        lock (_sync)
+        {
+            if (!_notices.TryGetValue(code, out var notices) ||
+                !notices.TryGetValue(guestId, out var notice))
+            {
+                return null;
+            }
+
+            notices.Remove(guestId);
+            if (notices.Count == 0)
+            {
+                _notices.Remove(code);
+            }
+            return notice;
+        }
+    }
+
+    private void SetNoticeLocked(string roomId, string guestId, ModerationNoticeView notice)
+    {
+        if (!_notices.TryGetValue(roomId, out var notices))
+        {
+            notices = new Dictionary<string, ModerationNoticeView>(StringComparer.Ordinal);
+            _notices[roomId] = notices;
+        }
+        notices[guestId] = notice;
+    }
+
+    private void ClearNoticeLocked(string roomId, string guestId)
+    {
+        if (_notices.TryGetValue(roomId, out var notices))
+        {
+            notices.Remove(guestId);
+            if (notices.Count == 0)
+            {
+                _notices.Remove(roomId);
+            }
+        }
+    }
+
+    private void PersistOwnerLocked(RoomState room, DateTimeOffset now)
+    {
+        try
+        {
+            _chatStore.UpdateOwner(room.Id, room.OwnerId, room.OwnerName, now);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not persist owner for room {RoomCode}.", room.Id);
+        }
+    }
+
+    private static string NormalizeDeviceId(string? raw)
+    {
+        var value = (raw ?? string.Empty).Trim();
+        return value.Length <= 160 ? value : value[..160];
+    }
+
+    private static string NormalizeReason(string? raw, int maxLength)
+    {
+        var value = (raw ?? string.Empty).Trim();
+        if (value.Length == 0)
+        {
+            return string.Empty;
+        }
+        return value.Length <= maxLength ? value : value[..maxLength];
+    }
+
+    private static string FormatDuration(int minutes)
+    {
+        if (minutes >= 1440 && minutes % 1440 == 0)
+        {
+            var days = minutes / 1440;
+            return days == 1 ? "1 dia" : $"{days} dias";
+        }
+        if (minutes >= 60 && minutes % 60 == 0)
+        {
+            var hours = minutes / 60;
+            return hours == 1 ? "1 hora" : $"{hours} horas";
+        }
+        return minutes == 1 ? "1 minuto" : $"{minutes} minutos";
+    }
+
+    public IReadOnlyList<ChatMessageView> GetChatMessages(string? rawCode)    {
         var code = InputRules.NormalizeRoomCode(rawCode);
         if (code is null)
         {
@@ -1245,7 +1991,7 @@ public sealed class RoomService
             room.Name,
             room.HasPassword,
             room.Participants.Count,
-            MaxParticipantsPerRoom,
+            room.MaxParticipants,
             room.CreatedAt,
             room.OwnerName,
             people);
@@ -1347,7 +2093,7 @@ public sealed class RoomService
     private sealed class RoomState
     {
         public required string Id { get; init; }
-        public required string Name { get; init; }
+        public required string Name { get; set; }
         public required string OwnerId { get; set; }
         public required string OwnerName { get; set; }
         public DateTimeOffset CreatedAt { get; init; }
@@ -1355,6 +2101,7 @@ public sealed class RoomService
         public DateTimeOffset? EmptySince { get; set; }
         public string? PasswordSalt { get; init; }
         public string? PasswordHash { get; init; }
+        public int MaxParticipants { get; set; } = 2;
         public bool HasPassword => !string.IsNullOrEmpty(PasswordHash);
         public Dictionary<string, ParticipantState> Participants { get; } = new(StringComparer.Ordinal);
         public HashSet<string> RevokedGuestIds { get; } = new(StringComparer.Ordinal);
@@ -1375,5 +2122,11 @@ public sealed class RoomService
         public bool ScreenWithAudio { get; set; }
         public bool Speaking { get; set; }
         public DateTimeOffset? NativeMediaActiveUntil { get; set; }
+        public string DeviceId { get; set; } = string.Empty;
+        public bool MicBlocked { get; set; }
+        public bool CameraBlocked { get; set; }
+        public bool ScreenBlocked { get; set; }
+        public bool ChatBlocked { get; set; }
+        public DateTimeOffset? PunishedUntil { get; set; }
     }
 }

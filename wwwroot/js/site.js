@@ -2156,6 +2156,57 @@
         return readMediaFit();
     }
 
+    function getDeviceFingerprint() {
+        const parts = [
+            navigator.userAgent || "",
+            navigator.platform || "",
+            navigator.language || "",
+            navigator.languages?.join(",") || "",
+            String(screen.width || 0),
+            String(screen.height || 0),
+            String(screen.colorDepth || 0),
+            String(window.devicePixelRatio || 0),
+            Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+            String(navigator.hardwareConcurrency || 0),
+            String(navigator.deviceMemory || 0),
+            String(navigator.maxTouchPoints || 0)
+        ];
+
+        try {
+            const canvas = document.createElement("canvas");
+            canvas.width = 240;
+            canvas.height = 60;
+            const context = canvas.getContext("2d");
+            context.textBaseline = "top";
+            context.font = "16px 'Arial'";
+            context.fillStyle = "#f60";
+            context.fillRect(0, 0, 240, 20);
+            context.fillStyle = "#069";
+            context.fillText("Onda device fingerprint", 2, 22);
+            const data = canvas.getContext("2d")
+                .getImageData(0, 0, canvas.width, canvas.height).data;
+            let signature = 0;
+            for (let index = 0; index < data.length; index += 17) {
+                signature = (signature * 31 + data[index]) >>> 0;
+            }
+            parts.push(String(signature));
+        } catch {
+            // Canvas bloqueado: o restante do fingerprint continua válido.
+        }
+
+        const text = parts.join("|");
+        let hashA = 0x811c9dc5;
+        let hashB = 0x9e3779b9;
+        for (let index = 0; index < text.length; index++) {
+            const code = text.charCodeAt(index);
+            hashA ^= code;
+            hashA = Math.imul(hashA, 0x01000193) >>> 0;
+            hashB ^= (code + index);
+            hashB = Math.imul(hashB, 0x85ebca6b) >>> 0;
+        }
+        return `onda-${hashA.toString(16).padStart(8, "0")}${hashB.toString(16).padStart(8, "0")}`;
+    }
+
     function setMediaFit(mode) {
         const value = mode === "cover" ? "cover" : "contain";
         try {
@@ -3404,6 +3455,7 @@
         updatePipTarget,
         getMediaFit,
         setMediaFit,
+        getDeviceFingerprint,
         startPresenceHeartbeat,
         stopPresenceHeartbeat,
         registerVisibilityListener,
