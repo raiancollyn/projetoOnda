@@ -1608,8 +1608,18 @@ async function stopCameraSession(notifyServer) {
 
 function buildScreenCaptureOptions(allowAudio = true) {
     const withAudio = Boolean(allowAudio);
+    const supported = navigator.mediaDevices?.getSupportedConstraints?.() || {};
+    const audioConstraints = {
+        suppressLocalAudioPlayback: false
+    };
+    if (supported.restrictOwnAudio) {
+        // Remove o áudio gerado pela própria guia do Onda da captura de
+        // sistema, evitando que a voz dos outros volte como eco.
+        audioConstraints.restrictOwnAudio = true;
+    }
+
     return {
-        audio: withAudio,
+        audio: withAudio ? audioConstraints : false,
         resolution: {
             width: quality.width,
             height: quality.height,
