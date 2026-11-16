@@ -20,9 +20,12 @@
                     }
                     <h2 id="@_titleId">@Title</h2>
                 </div>
-                <button type="button" class="icon-button modal-close-button" aria-label="Fechar" @onclick="CloseAsync">
-                    <Icon Name="x" Size="19" />
-                </button>
+                @if (Dismissible)
+                {
+                    <button type="button" class="icon-button modal-close-button" aria-label="Fechar" @onclick="CloseAsync">
+                        <Icon Name="x" Size="19" />
+                    </button>
+                }
             </div>
             @ChildContent
         </div>
@@ -46,6 +49,9 @@
     public bool Wide { get; set; }
 
     [Parameter]
+    public bool Dismissible { get; set; } = true;
+
+    [Parameter]
     public EventCallback OnClose { get; set; }
 
     [Parameter]
@@ -61,6 +67,11 @@
 
     private Task HandleBackdropClick()
     {
+        if (!Dismissible)
+        {
+            return Task.CompletedTask;
+        }
+
         // Se o ponteiro começou dentro do modal e o usuário arrastou até
         // soltar fora, o navegador dispara o clique no backdrop. Não fecha.
         if (!_pointerDownOnBackdrop)
@@ -74,7 +85,7 @@
 
     private async Task HandleKeyDown(KeyboardEventArgs args)
     {
-        if (args.Key == "Escape")
+        if (Dismissible && args.Key == "Escape")
         {
             await CloseAsync();
         }

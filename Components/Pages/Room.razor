@@ -1915,6 +1915,7 @@ else
 <Modal IsOpen="_showModerationDialog"
        Title="@(_moderationNotice?.Kind == "ban" ? "Você foi banido" : "Você foi expulso")"
        Eyebrow="AVISO DA SALA"
+       Dismissible="false"
        OnClose="FinishModerationExitAsync">
     <div class="moderation-notice">
         <span class="moderation-notice-icon">
@@ -3124,6 +3125,7 @@ else
         _joined = false;
         StopServerPresenceLoop();
         _moderationClockCts?.Cancel();
+        _ = DisableRoomExitGuardAsync();
         _ = StopModeratedSessionAsync();
     }
 
@@ -3182,6 +3184,7 @@ else
             return;
         }
         _moderationExitStarted = true;
+        await DisableRoomExitGuardAsync();
         _showModerationDialog = false;
         await InvokeAsync(() => Nav.NavigateTo("/", forceLoad: true));
     }
