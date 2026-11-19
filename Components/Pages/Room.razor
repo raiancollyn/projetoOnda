@@ -747,7 +747,7 @@ else
 
                     <div class="dock-controls">
                         <button type="button"
-                                class="dock-control @(_localMicOn ? "is-stop" : null)"
+                                class="dock-control @(_localMicOn ? "is-on" : "is-off")"
                                 @onclick="ToggleMicrophoneAsync"
                                 disabled="@(!_jsReady || _actionPending is not null || !CanUseMic)"
                                 aria-pressed="@(_localMicOn ? "true" : "false")"
@@ -760,7 +760,7 @@ else
                                 }
                                 else
                                 {
-                                    <Icon Name="@(_localMicOn ? "mic-off" : "mic")" Size="19" />
+                                    <Icon Name="@(_localMicOn ? "mic" : "mic-off")" Size="19" />
                                 }
                             </span>
                             <span class="dock-control-label">@(_localMicOn ? "Mic" : "Mudo")</span>
@@ -772,7 +772,7 @@ else
                         }
 
                         <button type="button"
-                                class="dock-control @(_localCameraOn ? "is-stop" : null)"
+                                class="dock-control @(_localCameraOn ? "is-on" : "is-off")"
                                 @onclick="ToggleCameraAsync"
                                 disabled="@(!_jsReady || _actionPending is not null || !CanUseCamera)"
                                 aria-pressed="@(_localCameraOn ? "true" : "false")"
@@ -785,10 +785,10 @@ else
                                 }
                                 else
                                 {
-                                    <Icon Name="@(_localCameraOn ? "camera-off" : "camera")" Size="19" />
+                                    <Icon Name="@(_localCameraOn ? "camera" : "camera-off")" Size="19" />
                                 }
                             </span>
-                            <span class="dock-control-label">Câmera</span>
+                            <span class="dock-control-label">@(_localCameraOn ? "Câmera" : "Câmera desligada")</span>
                         </button>
 
                         @if (_localCameraOn && (_nativeMedia || _cameraDevices.Count > 1 || _cameraTorchSupported))
@@ -805,7 +805,7 @@ else
                         }
 
                         <button type="button"
-                                class="dock-control dock-screen-control @(_localScreenOn ? "is-stop" : null)"
+                                class="dock-control dock-screen-control @(_localScreenOn ? "is-on" : "is-off")"
                                 @onclick="ToggleScreenAsync"
                                 disabled="@(!_jsReady || _actionPending is not null || !CanUseScreen)"
                                 aria-pressed="@(_localScreenOn ? "true" : "false")"
@@ -818,10 +818,10 @@ else
                                 }
                                 else
                                 {
-                                    <Icon Name="@(_localScreenOn ? "screen-off" : "screen")" Size="19" />
+                                    <Icon Name="@(_localScreenOn ? "screen" : "screen-off")" Size="19" />
                                 }
                             </span>
-                            <span class="dock-control-label">@(_localScreenOn ? "Parar" : "Tela")</span>
+                            <span class="dock-control-label">@(_localScreenOn ? "Tela" : "Tela desligada")</span>
                         </button>
 
                         <span class="dock-divider" aria-hidden="true"></span>

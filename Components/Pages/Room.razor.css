@@ -1765,7 +1765,11 @@ html[data-theme="light"] .dock-signal i {
 }
 
 .dock-control.is-off .dock-control-icon {
-    background: rgba(255, 111, 89, 0.12);
+    background: rgba(255, 111, 89, 0.16);
+    color: #ff9b8a;
+}
+
+.dock-control.is-off .dock-control-label {
     color: #ffb1a4;
 }
 
