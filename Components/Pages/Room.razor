@@ -751,8 +751,8 @@ else
                                 @onclick="ToggleMicrophoneAsync"
                                 disabled="@(!_jsReady || _actionPending is not null || !CanUseMic)"
                                 aria-pressed="@(_localMicOn ? "true" : "false")"
-                                aria-label="@(_localMicOn ? "Silenciar microfone" : _hasMic ? "Ativar microfone" : "Permitir microfone")"
-                                title="@(!CanUseMic ? "O administrador bloqueou o microfone." : _localMicOn ? "Silenciar microfone" : _hasMic ? "Ativar microfone" : "Permitir microfone")">
+                                aria-label="@(_localMicOn ? "Silenciar microfone" : _hasMic ? "Dessilenciar microfone" : "Permitir microfone")"
+                                title="@(!CanUseMic ? "O administrador bloqueou o microfone." : _localMicOn ? "Silenciar microfone" : _hasMic ? "Dessilenciar microfone" : "Permitir microfone")">
                             <span class="dock-control-icon">
                                 @if (_actionPending == "mic")
                                 {
@@ -763,7 +763,7 @@ else
                                     <Icon Name="@(_localMicOn ? "mic" : "mic-off")" Size="19" />
                                 }
                             </span>
-                            <span class="dock-control-label">@(_localMicOn ? "Mic" : "Mudo")</span>
+                            <span class="dock-control-label">@(_localMicOn ? "Silenciar" : "Dessilenciar")</span>
                         </button>
 
                         @if (_localCameraOn && (_nativeMedia || _cameraDevices.Count > 1 || _cameraTorchSupported))
